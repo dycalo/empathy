@@ -138,11 +138,11 @@ def test_create_dialogue_registers_and_returns_path(tmp_path: Path) -> None:
     meta, dialogue_dir = create_dialogue(proj)
 
     assert dialogue_dir.exists()
-    assert (dialogue_dir / ".empathy").exists()
-    assert (dialogue_dir / ".empathy" / "therapist").exists()
-    assert (dialogue_dir / ".empathy" / "client").exists()
+    assert (dialogue_dir / "therapist").exists()
+    assert (dialogue_dir / "client").exists()
 
     registered = list_dialogues(proj)
+    # The newly created dialogue is found via _load_raw and also potentially discovered if registered earlier, but it should just be once in dialogues.yaml if not duplicates.
     assert len(registered) == 1
     assert registered[0].id == meta.id
     assert registered[0].status == "waiting"

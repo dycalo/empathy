@@ -44,14 +44,54 @@ def _save(project_dir: Path, dialogues: list[DialogueMeta]) -> None:
         )
 
 
+_DISCOVERING = set()
+
+
 def list_dialogues(project_dir: Path) -> list[DialogueMeta]:
     """Return all registered dialogues for the project, oldest-first."""
-    return [DialogueMeta.from_dict(e) for e in _load_raw(project_dir)]
+    entries = [DialogueMeta.from_dict(e) for e in _load_raw(project_dir)]
+
+    if project_dir in _DISCOVERING:
+        return sorted(entries, key=lambda d: d.created_at)
+
+    _DISCOVERING.add(project_dir)
+    try:
+        # Auto-discover manually created dialogues
+        dialogues_dir = project_dir / "dialogues"
+        if dialogues_dir.exists() and dialogues_dir.is_dir():
+            known_ids = {d.id for d in entries}
+            for d in dialogues_dir.iterdir():
+                if d.is_dir() and (d / "dialogue.yaml").exists() and d.name not in known_ids:
+                    # Discovered an unregistered dialogue
+                    try:
+                        stat = d.stat()
+                        created = datetime.fromtimestamp(stat.st_ctime, tz=UTC)
+                    except Exception:
+                        created = datetime.now(UTC)
+
+                    meta = DialogueMeta(
+                        id=d.name,
+                        path=f"dialogues/{d.name}",
+                        status="waiting",
+                        created_at=created,
+                        sides_connected=[],
+                    )
+                    entries.append(meta)
+                    # Register it immediately so we don't have to scan again
+                    register_dialogue(project_dir, meta)
+                    known_ids.add(d.name)
+    finally:
+        _DISCOVERING.remove(project_dir)
+
+    return sorted(entries, key=lambda d: d.created_at)
 
 
 def register_dialogue(project_dir: Path, meta: DialogueMeta) -> None:
     """Append a new dialogue entry to the registry."""
     existing = list_dialogues(project_dir)
+    # Check if already registered
+    if any(d.id == meta.id for d in existing):
+        return
     existing.append(meta)
     _save(project_dir, existing)
 
@@ -67,7 +107,9 @@ def update_dialogue(project_dir: Path, dialogue_id: str, **fields: Any) -> None:
     _save(project_dir, dialogues)
 
 
-def create_dialogue(project_dir: Path) -> tuple[DialogueMeta, Path]:
+def create_dialogue(
+    project_dir: Path, client_id: str | None = None, therapist_id: str | None = None
+) -> tuple[DialogueMeta, Path]:
     """Create a new dialogue directory under ``<project_dir>/dialogues/``.
 
     Registers the dialogue in ``dialogues.yaml`` and returns
@@ -78,8 +120,17 @@ def create_dialogue(project_dir: Path) -> tuple[DialogueMeta, Path]:
     rel_path = f"dialogues/{dialogue_id}"
     dialogue_dir = project_dir / rel_path
 
-    (dialogue_dir / ".empathy" / "therapist").mkdir(parents=True, exist_ok=True)
-    (dialogue_dir / ".empathy" / "client").mkdir(parents=True, exist_ok=True)
+    (dialogue_dir / "client").mkdir(parents=True, exist_ok=True)
+    (dialogue_dir / "therapist").mkdir(parents=True, exist_ok=True)
+
+    yaml_data: dict[str, str] = {}
+    if client_id is not None:
+        yaml_data["client_id"] = client_id
+    if therapist_id is not None:
+        yaml_data["therapist_id"] = therapist_id
+
+    with (dialogue_dir / "dialogue.yaml").open("w") as f:
+        yaml.dump(yaml_data, f, allow_unicode=True, default_flow_style=False)
 
     meta = DialogueMeta(
         id=dialogue_id,

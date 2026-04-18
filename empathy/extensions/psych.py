@@ -21,6 +21,7 @@ _SIDE_FILE: dict[str, str] = {
     "client": "CLIENT.md",
 }
 
+
 def _read(path: Path) -> str:
     if not path.exists():
         return ""
@@ -58,7 +59,7 @@ def load_side_knowledge(
         dialogue_dict = _load_yaml(dialogue_dir / "dialogue.yaml")
         dialogue_config = DialogueConfig.from_dict(dialogue_dict)
         user_id = getattr(dialogue_config, f"{side}_id", None)
-        
+
         if user_id:
             user_content = _read(_global / "users" / user_id / filename)
             if user_content:

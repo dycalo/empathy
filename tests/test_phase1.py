@@ -315,7 +315,9 @@ def test_load_config_three_tier_merge(tmp_path: Path) -> None:
 
     dialogue_dir = tmp_path / "dialogue"
     dialogue_dir.mkdir(parents=True)
-    (dialogue_dir / "dialogue.yaml").write_text("therapist_id: user123\nllm:\n  temp: 0.3\nfloor_timeout_seconds: 600\n")
+    (dialogue_dir / "dialogue.yaml").write_text(
+        "therapist_id: user123\nllm:\n  temp: 0.3\nfloor_timeout_seconds: 600\n"
+    )
 
     cfg = load_config(
         "therapist",

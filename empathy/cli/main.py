@@ -42,6 +42,10 @@ def main(
 def start(
     side: str = typer.Option(..., "--side", "-s", help="therapist | client"),
     project: Path | None = typer.Option(None, "--project", "-p", help="Project dir (default: cwd)"),
+    client_id: str | None = typer.Option(None, "--client-id", help="Pre-seed client config"),
+    therapist_id: str | None = typer.Option(
+        None, "--therapist-id", help="Pre-seed therapist config"
+    ),
 ) -> None:
     """Start or join a dialogue session."""
     if side not in ("therapist", "client"):
@@ -62,7 +66,9 @@ def start(
     from empathy.storage.registry import list_dialogues, update_dialogue
 
     dialogues = list_dialogues(project_dir)
-    dialogue_dir = _pick_dialogue(project_dir, dialogues)
+    dialogue_dir = _pick_dialogue(
+        project_dir, dialogues, client_id=client_id, therapist_id=therapist_id
+    )
     dialogue_id = dialogue_dir.name
 
     # Register this side as connected; transition status if both sides joined
@@ -80,16 +86,18 @@ def start(
     from empathy.extensions.psych import load_dialogue_background, load_side_knowledge
 
     config = load_config(cast(Speaker, side), dialogue_dir=dialogue_dir)
-    knowledge = load_side_knowledge(
-        cast(Speaker, side), dialogue_dir=dialogue_dir
-    )
+    knowledge = load_side_knowledge(cast(Speaker, side), dialogue_dir=dialogue_dir)
     background = load_dialogue_background()
     model: str = config.get("llm", {}).get("model", "claude-haiku-4-5-20251001")
 
     # --- Load MCP tools ---
     from empathy.extensions.mcp import load_mcp_provider
 
-    mcp_provider = load_mcp_provider(cast(Speaker, side), dialogue_dir=dialogue_dir, enabled_mcp_servers=config.get("enabled_mcp_servers", []))
+    mcp_provider = load_mcp_provider(
+        cast(Speaker, side),
+        dialogue_dir=dialogue_dir,
+        enabled_mcp_servers=config.get("enabled_mcp_servers", []),
+    )
     if not mcp_provider.is_empty:
         console.print(
             f"[dim]Loaded {len(mcp_provider.servers)} MCP server(s): "
@@ -230,13 +238,20 @@ def delete(
 # ---------------------------------------------------------------------------
 
 
-def _pick_dialogue(project_dir: Path, dialogues: list[DialogueMeta]) -> Path:
+def _pick_dialogue(
+    project_dir: Path,
+    dialogues: list[DialogueMeta],
+    client_id: str | None = None,
+    therapist_id: str | None = None,
+) -> Path:
     """Interactive dialogue selector. Returns the chosen dialogue directory."""
     from empathy.storage.registry import create_dialogue
 
     if not dialogues:
         console.print("[dim]No existing dialogues found. Creating new one…[/dim]")
-        meta, dialogue_dir = create_dialogue(project_dir)
+        meta, dialogue_dir = create_dialogue(
+            project_dir, client_id=client_id, therapist_id=therapist_id
+        )
         console.print(f"[green]✓[/green] Created [cyan]{meta.id}[/cyan]")
         return dialogue_dir
 
@@ -252,7 +267,9 @@ def _pick_dialogue(project_dir: Path, dialogues: list[DialogueMeta]) -> Path:
     while True:
         choice = Prompt.ask("Choice").strip().lower()
         if choice == "n":
-            meta, dialogue_dir = create_dialogue(project_dir)
+            meta, dialogue_dir = create_dialogue(
+                project_dir, client_id=client_id, therapist_id=therapist_id
+            )
             console.print(f"[green]✓[/green] Created [cyan]{meta.id}[/cyan]")
             return dialogue_dir
         try:

@@ -254,6 +254,7 @@ class BaseAgent:
             skill_name = inputs.get("skill_name")
             if hasattr(self, "_current_skills") and skill_name in self._current_skills:
                 from empathy.extensions.skills import read_skill_body
+
                 return read_skill_body(self._current_skills[skill_name])
             return "Error: Skill not found or not enabled."
 
