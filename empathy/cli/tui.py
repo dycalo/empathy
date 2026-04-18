@@ -75,7 +75,7 @@ class TranscriptPanel(RichLog):
                 source_hint = " [dim](edited)[/dim]"
             self.write(
                 f"[bold {speaker_color}]{turn.speaker.upper()}[/bold {speaker_color}]"
-                f"{source_hint}n{turn.content}n"
+                f"{source_hint}\n{turn.content}\n"
             )
         self._last_count = len(turns)
         self.scroll_end(animate=False)
@@ -98,7 +98,7 @@ class SuggestionWidget(Static):
             info = COMMANDS.get(cmd_name)
             desc = info["description"] if info else ""
             lines.append(f"  [cyan]{s}[/cyan]  [dim]{desc}[/dim]")
-        self.update("n".join(lines))
+        self.update("\n".join(lines))
         self.display = True
 
     def hide(self) -> None:
@@ -169,7 +169,7 @@ class ConfirmWidget(Static, can_focus=True):
             return
         assert self._state.options is not None
         lines = ["[bold yellow]Agent Draft:[/bold yellow]"]
-        for line in self._state.draft_content.split("n"):
+        for line in self._state.draft_content.split("\n"):
             lines.append(f"  {line}")
         lines.append("")
         for i, (_, label) in enumerate(self._state.options):
@@ -179,7 +179,7 @@ class ConfirmWidget(Static, can_focus=True):
                 lines.append(f"  [dim]  {i + 1}. {label}[/dim]")
         lines.append("")
         lines.append("  [dim]Tab → refine instruction[/dim]")
-        self.update("n".join(lines))
+        self.update("\n".join(lines))
 
     def action_move_up(self) -> None:
         if self._state:
@@ -258,7 +258,7 @@ class EditArea(TextArea):
         self.post_message(self.Submitted(self.text, self))
 
     def action_insert_newline(self) -> None:
-        self.insert("n")
+        self.insert("\n")
 
     def action_cancel(self) -> None:
         self.post_message(self.Canceled(self))
@@ -619,8 +619,8 @@ class EmpathyApp(App[None]):
                 rejected = sum(1 for d in drafts if d.outcome == "rejected")
                 edited = sum(1 for d in drafts if d.outcome == "edited")
                 self._write_log(
-                    f"[bold]Context:[/bold]n"
-                    f"  Transcript turns: [cyan]{len(turns)}[/cyan]n"
+                    f"[bold]Context:[/bold]\n"
+                    f"  Transcript turns: [cyan]{len(turns)}[/cyan]\n"
                     f"  Drafts: accepted=[green]{accepted}[/green]"
                     f" edited=[yellow]{edited}[/yellow]"
                     f" rejected=[red]{rejected}[/red]"
@@ -639,21 +639,21 @@ class EmpathyApp(App[None]):
                 knowledge_len = len(getattr(self._session.agent, "_knowledge", ""))
                 bg_len = len(getattr(self._session.agent, "_dialogue_background", ""))
                 self._write_log(
-                    f"[bold]Agent info:[/bold]n"
-                    f"  Side: [cyan]{self._session.side}[/cyan]n"
-                    f"  Model: [cyan]{model}[/cyan]n"
-                    f"  Knowledge: [dim]{knowledge_len} chars[/dim]n"
+                    f"[bold]Agent info:[/bold]\n"
+                    f"  Side: [cyan]{self._session.side}[/cyan]\n"
+                    f"  Model: [cyan]{model}[/cyan]\n"
+                    f"  Knowledge: [dim]{knowledge_len} chars[/dim]\n"
                     f"  Background: [dim]{bg_len} chars[/dim]"
                 )
 
         elif base_cmd == "/session":
             st = self._session.floor_status()
             self._write_log(
-                f"[bold]Session info:[/bold]n"
-                f"  Dialogue: [cyan]{self._session.dialogue_dir.name}[/cyan]n"
-                f"  Side: [cyan]{self._session.side}[/cyan]n"
-                f"  Turn: [cyan]{st.get('turn_number', 0)}[/cyan]n"
-                f"  Floor holder: [cyan]{st.get('floor_holder', 'none')}[/cyan]n"
+                f"[bold]Session info:[/bold]\n"
+                f"  Dialogue: [cyan]{self._session.dialogue_dir.name}[/cyan]\n"
+                f"  Side: [cyan]{self._session.side}[/cyan]\n"
+                f"  Turn: [cyan]{st.get('turn_number', 0)}[/cyan]\n"
+                f"  Floor holder: [cyan]{st.get('floor_holder', 'none')}[/cyan]\n"
                 f"  Last speaker: [cyan]{st.get('last_speaker', 'none')}[/cyan]"
             )
 

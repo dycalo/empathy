@@ -1,139 +1,322 @@
 # Empathy 🧠💬
 
-Empathy 是一个可控的 Agent 心理情感支持对话生成与实验框架。通过两端（Client / Therapist）人在回路（Human-in-the-Loop）的命令行界面，结合强大的大语言模型（LLMs），辅助研究人员、心理咨询师或剧本作者生成、评估并干预心理咨询对话。
-
-本项目借鉴了前沿的 Agent 工程设计模式（例如 Claude Code 的多层级系统指令与上下文协议），将系统状态与角色技能彻底解耦，大幅提升了对模型行为的约束力和动态扩展性。
+Empathy 是一个可控的 Agent 心理情感支持对话生成与实验框架。通过两端（Client / Therapist）人在回路（Human-in-the-Loop）的命令行界面，结合大语言模型（LLMs），辅助研究人员、心理咨询师或剧本作者生成、评估并干预心理咨询对话。
 
 ## 🌟 核心特性
 
 - **两端三层级架构（Global / User / Dialogue）**
-  - **Global 层**：管理最底层的规则与全局可用的动态技能（如社会背景、职业底线原则）。
-  - **User 层（原型库）**：你可以预先设定多个来访者（Client）与咨询师（Therapist）的原型配置，针对不同的“人格设定”、“工作风格”进行独立配置。
-  - **Dialogue 层**：基于具体的咨询场景或突发事件快速覆盖参数，指定当前 Session 使用的 User 原型。
+  - **Global 层**：管理最底层的规则与全局可用的动态技能（如社会背景、职业底线原则）
+  - **User 层（原型库）**：预先设定来访者（Client）与咨询师（Therapist）的原型配置
+  - **Dialogue 层**：基于具体的咨询场景快速覆盖参数
 
 - **三模模块解耦设计（STATE, SKILL, MCP）**
-  - **STATE 静态状态注入**：基于 XML 结构，分别将 Global/User/Dialogue 层的角色设定静态注入系统，彻底解决模型“身份遗忘”的问题。
-  - **SKILL 动态能力调用**：摒弃长篇大论的 System Prompt！系统将自动读取启用技能（如 `ptsd_reaction` 或 `cbt_framework`）的 Markdown 头文件（Frontmatter），动态装载为 Tool 提供给 Agent。仅在条件触发时，Agent 才会按需调用并获取完整的设定内容，保持上下文的轻量与高效。
-  - **MCP 模型上下文协议（Model Context Protocol）**：支持在不同层级以 `mcp.json` 形式级联配置并启动原生 MCP Servers，轻松外接如蓝牙心率带、面部表情分析等外部数据源。
+  - **STATE**：将角色设定静态注入系统，解决模型"身份遗忘"问题
+  - **SKILL**：将技能以 Markdown frontmatter 形式按需动态装载为 Tool
+  - **MCP**：支持级联配置原生 MCP Servers，接入外部数据源
 
-## 📂 架构概览与配置结构
+- **人在回路控制**：每条发言均可 Accept / Edit / Reject，完整保存训练信号
 
-系统强依赖于文件目录结构来组织原型与对话。默认配置文件位于用户目录 `~/.empathy/` 及当前工作区的 `dialogues/`。
+- **上下文窗口管理**：自动对超出窗口的历史轮次生成摘要，保持长对话连贯性
 
-```text
-~/.empathy/
-├── global/                            # Global 层（物理资产存储与最底层设定）
-│   ├── client/
-│   │   ├── CLIENT.md                  # 静态：通用社会关系定义
-│   │   ├── skills/                    # 动态能力：所有 BEHAVIOR.md (如 ptsd.md)
-│   │   └── mcp.json                   # 外部接口：所有可用的 MCP Servers
-│   └── therapist/
-│       ├── THERAPIST.md               # 静态：心理咨询师职业底线
-│       ├── skills/                    # 动态能力：所有 THERAPY.md
-│       └── mcp.json
-│
-└── users/                             # User 层（角色原型库）
-    ├── client_alice/                  # 来访者原型 A
-    │   ├── CLIENT.md                  # 静态：具体的人格、性格设定
-    │   └── config.yaml                # 动态配置：开启的 SKILL 和 MCP (继承自 Global)
-    └── therapist_bob/                 # 咨询师原型 B
-        ├── THERAPIST.md               # 静态：倾听/表达的工作风格
-        └── config.yaml
+---
 
-<项目目录>/dialogues/session_001/         # Dialogue 层（具体的对话实例）
-├── client/
-│   └── CLIENT.md                      # 静态：当前面临的现实处境与突发事件
-├── therapist/
-│   └── THERAPIST.md                   # 静态：本次咨询的重点与目标
-└── dialogue.yaml                      # 核心配置：指定使用哪些 User 原型、覆盖哪些设定
-```
-
-## 🚀 部署说明
+## 📦 安装
 
 ### 前置要求
+
 - Python 3.9+
-- 推荐使用 [uv](https://github.com/astral-sh/uv) 管理依赖，或者使用 pip/poetry。
+- [uv](https://github.com/astral-sh/uv)（推荐）或 pip
 
-### 安装依赖
-
-克隆本仓库并在项目根目录下执行安装：
+### 安装步骤
 
 ```bash
-# 如果使用 uv (推荐)
-uv venv
-source .venv/bin/activate
+git clone <repo-url>
+cd empathy
+
+# 使用 uv（推荐）
+uv venv && source .venv/bin/activate
 uv pip sync uv.lock
 
-# 或者标准 pip 安装
+# 或使用 pip
 pip install -e .
 ```
 
-### 配置大模型 API 密钥
-
-目前框架已通过 Anthropic API 实现，请配置环境变量：
+### 配置 API Key
 
 ```bash
 export EMPATHY_API_KEY="sk-ant-api03-xxxx..."
-# 可选：配置覆盖默认调用的模型
-# export EMPATHY_MODEL="claude-3-7-sonnet-20250219"
-# 可选：如果你使用代理或中转服务
-# export EMPATHY_BASE_URL="https://api.your-proxy.com"
+
+# 可选：指定模型（默认 claude-haiku-4-5-20251001）
+export EMPATHY_MODEL="claude-sonnet-4-5"
+
+# 可选：使用代理或中转服务
+export EMPATHY_BASE_URL="https://api.your-proxy.com"
 ```
 
-## 📖 使用说明
+---
 
-### 1. 初始化你的第一场对话 (Dialogue)
+## 🚀 快速开始
 
-在开始运行前，你需要准备对应层级的文件结构。这里以跑通一个最小示例为例：
+### 第一步：启动交互式 TUI（人工控制模式）
 
-1. **设置 Global 技能池**：创建 `~/.empathy/global/client/skills/defense.md`
-    ```markdown
-    ---
-    name: defense_mechanism
-    type: behavior
-    description: 当感觉到被心理咨询师指责时，表现出极强的防御机制。
-    ---
-    表现形式：
-    1. 说话带刺，转移话题。
-    2. 否认自己的问题，试图指出咨询师逻辑的漏洞。
-    3. 拒绝直接回答关于内心感受的提问。
-    ```
-
-2. **创建一个 User 原型**：创建 `~/.empathy/users/client_demo/config.yaml`
-    ```yaml
-    enabled_skills:
-      - defense_mechanism
-    ```
-
-3. **创建你的对话场景 (Dialogue)**：在当前项目的 `dialogues/session_001/dialogue.yaml`
-    ```yaml
-    client_id: client_demo
-    therapist_id: therapist_default
-    ```
-   可以在 `dialogues/session_001/client/CLIENT.md` 中补充具体的情境：
-   ```text
-   我最近失业了，我觉得这全是管理层的错，但大家都在怪我。
-   ```
-
-### 2. 启动命令行界面 (CLI)
-
-确保你在项目根目录下，执行主程序启动当前对话会话：
+在项目目录下，以 therapist 身份开始：
 
 ```bash
-python -m empathy.cli.main --dialogue-dir dialogues/session_001
+python -m empathy.cli.main start --side therapist
 ```
 
-你将进入双端互动的 CLI 界面。作为**人在回路的控制器（Controller）**，你可以：
-- 直接向 Client 或 Therapist 下达指令（如：“表现得更加焦虑”、“尝试使用 CBT 引导她”）。
-- 模型根据指令生成草稿（Draft）后，由你决定 **批准（Accept）**、**修改（Edit）** 还是 **拒绝并重试（Reject）**。
-- 一旦某端的话语被批准，这句对话将会正式进入转录（Transcript）并展示给另一端。
+首次运行时会提示创建新对话。在另一个终端以 client 身份加入：
 
-在对话过程中，当 Agent 判定条件满足时，会自动通过系统底层的 **Tool Calling** 读取 `defense_mechanism` 的详情指导自己的下一步发言！
+```bash
+python -m empathy.cli.main start --side client
+```
+
+两端均连接后，对话即可开始。
+
+### 第二步：在 TUI 中生成发言
+
+TUI 分为两个面板：
+- **左侧**：控制面板（指令输入、草稿确认、日志）
+- **右侧**：对话转录（实时更新）
+
+在左侧指令框中输入任意指令，例如：
+
+```
+hi
+```
+```
+继续对话
+```
+```
+表现出更多的焦虑情绪
+```
+
+Agent 会根据指令生成草稿，然后显示确认选项。
+
+---
+
+## 📖 详细使用说明
+
+### 交互式 TUI 模式（`start` 命令）
+
+```bash
+python -m empathy.cli.main start \
+  --side therapist \          # 必填：therapist 或 client
+  --project /path/to/proj \   # 可选：项目目录（默认当前目录）
+  --client-id my_client \     # 可选：预设 client 原型 ID
+  --therapist-id my_therapist # 可选：预设 therapist 原型 ID
+```
+
+#### 指令输入方式
+
+在指令框中，你可以输入：
+
+| 输入类型 | 示例 | Agent 行为 |
+|----------|------|------------|
+| 简短问候 | `hi`、`hello` | 生成开场问候语 |
+| 继续指令 | `continue`、`go ahead` | 自然延续对话 |
+| 主题词 | `anxiety`、`reflect` | 以该词为主题发言 |
+| 具体指令 | `ask about childhood` | 按指令内容生成 |
+| 斜杠命令 | `/done`、`/help` | 执行系统命令 |
+
+#### 草稿确认选项
+
+Agent 生成草稿后，可用以下操作：
+
+| 按键 | 操作 |
+|------|------|
+| `a` | **Accept** — 直接采纳草稿，提交到转录 |
+| `e` | **Edit** — 手动编辑草稿后提交 |
+| `r` | **Reject** — 拒绝草稿，重新输入指令 |
+| `h` | **Type yourself** — 跳过 Agent，直接键入发言内容 |
+| `Tab` | **Refine** — 将当前指令返回到输入框，便于修改后重试 |
+| `↑`/`↓` | 在选项间移动 |
+| `Enter` | 确认当前选中项 |
+
+#### 楼层系统（Floor System）
+
+楼层控制哪一端当前可以发言，防止两端同时写入：
+
+- 进入 TUI 后，系统会自动尝试获取楼层
+- 当前拥有楼层时，可以输入指令和生成草稿
+- 输入 `/done` 释放楼层，让另一端开始发言
+- 状态栏底部实时显示楼层持有方
+
+```
+therapist │ floor: MINE │ turn: 3 │ model: claude-haiku-4-5-20251001 │ skills: 2
+```
+
+### 自动模式（`run` 命令）
+
+无需人工确认，自动轮流生成指定轮次：
+
+```bash
+python -m empathy.cli.main run \
+  dialogues/session_001 \    # 对话目录路径
+  --turns 20 \               # 生成轮次（默认 10）
+  --model claude-haiku-4-5-20251001  # 使用的模型
+```
+
+自动模式适合快速生成大量对话数据，所有发言均标记为 `AGENT_AUTO` 来源。
+
+### TUI 斜杠命令参考
+
+在指令框中输入 `/` 后按 `Tab` 可自动补全命令。
+
+| 命令 | 说明 |
+|------|------|
+| `/done` | 释放楼层，让另一端发言 |
+| `/quit` | 退出当前 session |
+| `/help` | 列出所有可用命令 |
+| `/status` | 查看楼层和轮次状态 |
+| `/context` | 查看上下文信息（已接受/编辑/拒绝的草稿数） |
+| `/context clear` | 重置上下文提示（Agent 下次调用时重新读取历史） |
+| `/agent` | 查看当前 Agent 信息（模型、知识量等） |
+| `/agent model <id>` | 动态切换模型，立即生效 |
+| `/skills` | 列出当前加载的技能 |
+| `/session` | 查看完整 session 信息 |
+
+### 管理对话列表
+
+```bash
+# 列出所有对话（start 命令会显示对话选择菜单）
+python -m empathy.cli.main start --side therapist
+
+# 删除指定对话
+python -m empathy.cli.main delete <dialogue-id>
+python -m empathy.cli.main delete <dialogue-id> --force  # 跳过确认
+```
+
+---
+
+## 📂 配置结构
+
+系统采用三层级配置，下层设置会覆盖上层：
+
+```
+~/.empathy/                              # ← Global 层（全局默认）
+├── global/
+│   ├── client/
+│   │   ├── CLIENT.md                   # 通用 client 知识/规则
+│   │   ├── skills/                     # 全局可用技能
+│   │   └── mcp.json                    # 全局 MCP 配置
+│   └── therapist/
+│       ├── THERAPIST.md                # 通用 therapist 知识/规则
+│       ├── skills/
+│       └── mcp.json
+└── users/                              # ← User 层（角色原型）
+    ├── client_alice/
+    │   ├── CLIENT.md                   # Alice 的个性化设定
+    │   └── config.yaml                 # 启用的技能和 MCP
+    └── therapist_bob/
+        ├── THERAPIST.md
+        └── config.yaml
+
+<project>/dialogues/session_001/        # ← Dialogue 层（具体对话）
+├── client/
+│   └── CLIENT.md                       # 本次 session 特有情境
+├── therapist/
+│   └── THERAPIST.md                    # 本次咨询重点
+└── dialogue.yaml                       # 指定使用的原型 ID
+```
+
+### dialogue.yaml 示例
+
+```yaml
+client_id: client_alice      # 使用 ~/.empathy/users/client_alice/
+therapist_id: therapist_bob  # 使用 ~/.empathy/users/therapist_bob/
+```
+
+### config.yaml 示例（User 层）
+
+```yaml
+llm:
+  model: claude-sonnet-4-5   # 覆盖默认模型
+
+enabled_skills:
+  - defense_mechanism
+  - anxiety_response
+
+enabled_mcp_servers:
+  - heart_rate_monitor
+```
+
+---
+
+## 🔧 技能（Skills）配置
+
+技能以 Markdown frontmatter 格式存储，按需动态装载给 Agent。
+
+### 创建技能
+
+在 `~/.empathy/global/client/skills/` 中新建文件，例如 `defense.md`：
+
+```markdown
+---
+name: defense_mechanism
+type: behavior
+description: 当感受到被指责时，表现出强烈的防御机制。
+enabled: true
+mode: manual   # manual（手动触发）或 always（每轮自动注入）
+trigger: /defense
+---
+
+表现形式：
+1. 说话带刺，转移话题
+2. 否认自己的问题，指出对方逻辑漏洞
+3. 拒绝直接回答关于内心感受的提问
+```
+
+### 使用技能
+
+- `mode: always`：每次生成草稿时自动注入
+- `mode: manual`：在指令框输入 trigger（如 `/defense`）手动激活
+- 也可在指令中直接描述（如"使用 CBT 框架引导"）
+
+### 通过 CLI 管理配置
+
+```bash
+# 查看和管理 config 子命令
+python -m empathy.cli.main config --help
+```
+
+---
+
+## 📊 数据存储
+
+每个对话目录下保存完整的对话数据：
+
+```
+dialogues/session_001/
+├── transcript.jsonl         # 最终对话转录（每轮一行 JSON）
+├── draft-history.jsonl      # 所有草稿及处理结果（接受/编辑/拒绝）
+└── .empathy/
+    ├── state.json           # 楼层状态
+    ├── therapist/
+    │   └── summary.json     # 历史轮次压缩摘要
+    └── client/
+        └── summary.json
+```
+
+`draft-history.jsonl` 中的数据包含原始草稿、编辑后内容及结果标注，可直接用于模型微调或偏好学习（RLHF）。
+
+---
 
 ## 🤝 贡献指南
 
-1. 这个项目使用了非常严格的模块化组件，核心逻辑在 `empathy/extensions/`。
-2. 添加任何新的文件读取或者解析规则时，请运行 `uv run pytest tests/`，确保三层级的合并与覆盖没有被破坏。
+1. 运行测试确保不破坏三层级合并逻辑：
+   ```bash
+   .venv/bin/python -m pytest tests/ -v
+   ```
+
+2. 核心逻辑位置：
+   - `empathy/agents/` — Agent 系统提示与 API 调用
+   - `empathy/modes/` — 会话管理与 auto 模式
+   - `empathy/extensions/` — 技能、配置、MCP 加载
+   - `empathy/cli/` — TUI 与命令行入口
+   - `empathy/storage/` — 转录、草稿、状态持久化
+
+---
 
 ## 📜 许可证
 

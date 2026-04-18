@@ -231,16 +231,24 @@ class BaseAgent:
         """Opening paragraph describing the agent's role."""
         other = "client" if self.side == "therapist" else "therapist"
         return (
-            f"You are the {self.side} in a structured therapeutic dialogue. "
-            f"A human controller is guiding your responses via brief instructions. "
-            f"Your task is to generate a single natural reply as the {self.side}. "
-            f"When you have your response ready, call the speak tool with the exact "
-            f"dialogue text — "
-            f"no stage directions, role labels, or metadata. "
-            f"If the controller's instruction is unclear, output a plain text "
-            f"clarification question "
-            f"instead of calling speak. "
-            f"The other participant is the {other}."
+            f"You are the {self.side} in a structured therapeutic dialogue "
+            f"with a {other}. A human controller directs you via brief instructions. "
+            f"EVERY instruction is a dialogue directive — always generate a reply "
+            f"by calling the speak tool. Never treat an instruction as a question "
+            f"directed at you.\n\n"
+            f"Examples of brief instructions and what to do:\n"
+            f'- "hi" / "hello" → generate an appropriate greeting as the {self.side}\n'
+            f'- "continue" / "go ahead" → produce the natural next utterance\n'
+            f'- a single word or phrase (e.g. "anxiety", "deeper") → use it as a '
+            f"thematic cue for your next line\n"
+            f'- "ask about childhood" → follow the directive in your reply\n\n'
+            f"Rules:\n"
+            f"- ALWAYS call speak with your dialogue text — no stage directions, "
+            f"role labels, or metadata.\n"
+            f"- Maintain coherence with the conversation history in the messages.\n"
+            f"- Only ask for clarification (plain text, no speak call) when the "
+            f"instruction is truly ambiguous AND the conversation history provides "
+            f"no context to resolve it. This should be rare."
         )
 
     def _invoke_tool(self, name: str, inputs: dict[str, Any]) -> str:
