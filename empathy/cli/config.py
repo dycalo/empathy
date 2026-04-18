@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import click
@@ -17,6 +18,12 @@ app = typer.Typer(
     rich_markup_mode="rich",
 )
 console = Console()
+
+_STATUS_COLOR: dict[str, str] = {
+    "active": "green",
+    "waiting": "yellow",
+    "ended": "dim",
+}
 
 
 def _get_empathy_home() -> Path:
@@ -137,8 +144,6 @@ def user_edit(
 # Skills
 # ---------------------------------------------------------------------------
 
-import re
-
 
 def _parse_frontmatter(content: str) -> dict[str, str]:
     """Parse simple YAML frontmatter from markdown."""
@@ -241,3 +246,77 @@ def skill_edit(
 
     click.edit(filename=str(skill_path))
     console.print(f"[dim]Finished editing skill {name}[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# Dialogues
+# ---------------------------------------------------------------------------
+
+
+@app.command("dialogue-list")
+def dialogue_list(
+    project: Path | None = typer.Option(None, "--project", "-p", help="Project dir (default: cwd)"),
+) -> None:
+    """List all dialogues in the current project."""
+    from empathy.storage.registry import list_dialogues
+
+    project_dir = (project or Path.cwd()).resolve()
+    dialogues = list_dialogues(project_dir)
+
+    if not dialogues:
+        console.print("[dim]No dialogues found.[/dim]")
+        return
+
+    table = Table(title="Dialogues")
+    table.add_column("ID", style="cyan")
+    table.add_column("Status")
+    table.add_column("Created At", style="dim")
+    table.add_column("Connected Sides", style="dim")
+
+    for d in dialogues:
+        color = _STATUS_COLOR.get(d.status, "white")
+        status_colored = f"[{color}]{d.status}[/{color}]"
+        ts = d.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        sides = ", ".join(d.sides_connected) if d.sides_connected else "none"
+        table.add_row(d.id, status_colored, ts, sides)
+
+    console.print(table)
+
+
+@app.command("dialogue-edit")
+def dialogue_edit(
+    dialogue_id: str = typer.Argument(..., help="ID of the dialogue to edit"),
+    side: str = typer.Option(..., "--side", "-s", help="client | therapist"),
+    project: Path | None = typer.Option(None, "--project", "-p", help="Project dir (default: cwd)"),
+) -> None:
+    """Edit a dialogue configuration and context."""
+    if side not in ("client", "therapist"):
+        console.print("[red]Error:[/red] --side must be 'client' or 'therapist'")
+        raise typer.Exit(1)
+
+    from empathy.storage.registry import list_dialogues
+
+    project_dir = (project or Path.cwd()).resolve()
+    dialogues = list_dialogues(project_dir)
+    target = next((d for d in dialogues if d.id == dialogue_id), None)
+
+    if not target:
+        console.print(f"[red]Dialogue '{dialogue_id}' not found.[/red]")
+        raise typer.Exit(1)
+
+    dialogue_dir = project_dir / target.path
+    if not dialogue_dir.exists():
+        console.print(f"[red]Dialogue directory not found:[/red] {dialogue_dir}")
+        raise typer.Exit(1)
+
+    dialogue_yaml = dialogue_dir / "dialogue.yaml"
+    side_md = dialogue_dir / side / f"{side.upper()}.md"
+
+    if not side_md.exists():
+        side_md.parent.mkdir(parents=True, exist_ok=True)
+        side_md.write_text(f"# {dialogue_id} - {side.upper()} context\n\n")
+
+    click.edit(filename=str(dialogue_yaml))
+    click.edit(filename=str(side_md))
+
+    console.print(f"[dim]Finished editing dialogue {dialogue_id} ({side})[/dim]")

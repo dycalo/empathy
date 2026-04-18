@@ -33,8 +33,35 @@ def run_auto(
     """
     committed: list[Turn] = []
 
-    for i in range(turns):
-        speaker: Speaker = _SIDES[i % 2]
+    current_transcript = read_turns(transcript_path)
+    if not current_transcript and turns > 0:
+        draft = Draft.create(
+            speaker="therapist",
+            content="Hello, what brings you here today?",
+            source_instruction="Initial greeting"
+        )
+        append_draft(drafts_path, draft)
+        greeting = Turn.create(
+            speaker="therapist",
+            source=TurnSource.AGENT_AUTO,
+            content="Hello, what brings you here today?",
+            draft_id=draft.id
+        )
+        append_turn(transcript_path, greeting)
+        update_draft_outcome(drafts_path, draft.id, "accepted")
+        committed.append(greeting)
+        turns -= 1
+
+        # Start alternating from client side since therapist just greeted
+        client_turn = True
+    else:
+        # Transcript isn't empty, continue normally from therapist
+        client_turn = False
+
+    for _i in range(turns):
+        speaker: Speaker = "client" if client_turn else "therapist"
+        client_turn = not client_turn
+
         agent = therapist if speaker == "therapist" else client
         instruction = therapist_instruction if speaker == "therapist" else client_instruction
 

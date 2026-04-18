@@ -70,7 +70,7 @@ def start(
 
     dialogues = list_dialogues(project_dir)
     dialogue_dir = _pick_dialogue(
-        project_dir, dialogues, client_id=client_id, therapist_id=therapist_id
+        project_dir, dialogues, side, client_id=client_id, therapist_id=therapist_id
     )
     dialogue_id = dialogue_dir.name
 
@@ -244,11 +244,22 @@ def delete(
 def _pick_dialogue(
     project_dir: Path,
     dialogues: list[DialogueMeta],
+    side: str,
     client_id: str | None = None,
     therapist_id: str | None = None,
 ) -> Path:
     """Interactive dialogue selector. Returns the chosen dialogue directory."""
     from empathy.storage.registry import create_dialogue
+
+    def _prompt_edit(dialogue_dir: Path) -> None:
+        if typer.confirm(f"\nDo you want to edit the {side} context ({side.upper()}.md) now?"):
+            side_md = dialogue_dir / side / f"{side.upper()}.md"
+            side_md.parent.mkdir(parents=True, exist_ok=True)
+            if not side_md.exists():
+                side_md.write_text(f"# {dialogue_dir.name} - {side.upper()} context\n\n")
+            import click
+
+            click.edit(filename=str(side_md))
 
     if not dialogues:
         console.print("[dim]No existing dialogues found. Creating new one…[/dim]")
@@ -256,6 +267,7 @@ def _pick_dialogue(
             project_dir, client_id=client_id, therapist_id=therapist_id
         )
         console.print(f"[green]✓[/green] Created [cyan]{meta.id}[/cyan]")
+        _prompt_edit(dialogue_dir)
         return dialogue_dir
 
     console.print("\n[bold]Available dialogues:[/bold]")
@@ -274,11 +286,14 @@ def _pick_dialogue(
                 project_dir, client_id=client_id, therapist_id=therapist_id
             )
             console.print(f"[green]✓[/green] Created [cyan]{meta.id}[/cyan]")
+            _prompt_edit(dialogue_dir)
             return dialogue_dir
         try:
             idx = int(choice) - 1
             if 0 <= idx < len(dialogues):
-                return project_dir / dialogues[idx].path
+                dialogue_dir = project_dir / dialogues[idx].path
+                _prompt_edit(dialogue_dir)
+                return dialogue_dir
         except ValueError:
             pass
         console.print("[red]Invalid choice — enter a number or 'n'.[/red]")
