@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
+from empathy.cli.config import app as config_app
 from empathy.core.models import DialogueMeta, Speaker
 
 app = typer.Typer(
@@ -26,6 +27,8 @@ _STATUS_COLOR: dict[str, str] = {
     "waiting": "yellow",
     "ended": "dim",
 }
+
+app.add_typer(config_app, name="config", help="Manage user prototypes and skills")
 
 
 @app.callback()

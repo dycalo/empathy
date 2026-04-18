@@ -24,7 +24,8 @@
       "Bash(kill:*)",
       "Bash(python:*)",
       "Bash(gh auth:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(poetry run:*)"
     ]
   }
 }
