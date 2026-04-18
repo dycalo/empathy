@@ -1,0 +1,51 @@
+[project]
+name = "empathy"
+version = "0.1.0"
+description = "Controllable dialogue generation CLI for psychological research"
+requires-python = ">=3.12"
+dependencies = [
+    # LLM
+    "anthropic>=0.40",
+    # CLI
+    "typer>=0.12",
+    "rich>=13",
+    "textual>=0.80",
+    # Data
+    "pydantic>=2.0",
+    # Config / extension parsing
+    "pyyaml>=6.0",
+    "python-frontmatter>=1.1",
+]
+
+[project.scripts]
+empathy = "empathy.cli.main:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "mypy>=1.10",
+    "hatchling>=1.29.0",
+    "types-PyYAML",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

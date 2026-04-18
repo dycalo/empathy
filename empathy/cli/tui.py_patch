@@ -1,0 +1,5 @@
+            self._write_log(
+                "[magenta]Type your message. Press [bold]Enter[/bold] to submit "
+                "(Ctrl+J for newline), "
+                "[bold]Esc[/bold] to cancel.[/magenta]"
+            )
