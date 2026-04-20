@@ -16,3 +16,6 @@ dialogues/
 
 # Logs
 *.log
+
+# Claude Code
+.claude/
