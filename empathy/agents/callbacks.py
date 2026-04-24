@@ -20,6 +20,7 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
     - Tool execution errors
     - Agent action logging
     - Performance monitoring
+    - Execution statistics
     """
 
     def __init__(self, verbose: bool = False) -> None:
@@ -30,6 +31,8 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
         """
         super().__init__()
         self.verbose = verbose
+        self._tool_call_count = 0
+        self._error_count = 0
 
     def on_tool_start(
         self, serialized: dict[str, Any], input_str: str, **kwargs: Any
@@ -41,9 +44,12 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
             input_str: Tool input
             **kwargs: Additional arguments
         """
+        tool_name = serialized.get("name", "unknown")
+        self._tool_call_count += 1
+
         if self.verbose:
-            tool_name = serialized.get("name", "unknown")
-            logger.debug(f"Tool started: {tool_name} with input: {input_str[:100]}")
+            logger.info(f"[Tool Start] {tool_name}")
+            logger.debug(f"  Input: {input_str[:100]}...")
 
     def on_tool_end(self, output: str, **kwargs: Any) -> None:
         """Log when a tool finishes executing.
@@ -53,7 +59,8 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
             **kwargs: Additional arguments
         """
         if self.verbose:
-            logger.debug(f"Tool finished with output: {output[:100]}")
+            logger.info(f"[Tool End] Output length: {len(output)}")
+            logger.debug(f"  Output: {output[:100]}...")
 
     def on_tool_error(self, error: Exception, **kwargs: Any) -> None:
         """Handle tool execution errors.
@@ -63,11 +70,12 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
             **kwargs: Additional arguments (may include 'tool' name)
         """
         tool_name = kwargs.get("tool", "unknown")
-        logger.error(f"Tool '{tool_name}' failed: {error}")
+        self._error_count += 1
 
-        # Return friendly error message to agent
-        # Note: This doesn't actually return - it just logs
-        # The agent will receive the exception through normal flow
+        logger.error(f"[Tool Error] {tool_name}: {error}")
+
+        if self.verbose:
+            logger.debug(f"  Error details: {error}", exc_info=True)
 
     def on_agent_action(self, action: Any, **kwargs: Any) -> None:
         """Log agent actions for debugging.
@@ -79,7 +87,8 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
         if self.verbose:
             tool_name = getattr(action, "tool", "unknown")
             tool_input = getattr(action, "tool_input", {})
-            logger.debug(f"Agent action: {tool_name} with input {tool_input}")
+            logger.info(f"[Agent Action] Tool: {tool_name}")
+            logger.debug(f"  Input: {tool_input}")
 
     def on_agent_finish(self, finish: Any, **kwargs: Any) -> None:
         """Log when agent finishes.
@@ -89,7 +98,10 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
             **kwargs: Additional arguments
         """
         if self.verbose:
-            logger.debug("Agent finished execution")
+            logger.info(
+                f"[Agent Finish] Tools called: {self._tool_call_count}, "
+                f"Errors: {self._error_count}"
+            )
 
     def on_llm_start(
         self, serialized: dict[str, Any], prompts: list[str], **kwargs: Any
@@ -102,7 +114,9 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
             **kwargs: Additional arguments
         """
         if self.verbose:
-            logger.debug(f"LLM started with {len(prompts)} prompt(s)")
+            logger.info(f"[LLM Start] Prompts: {len(prompts)}")
+            for i, prompt in enumerate(prompts[:2]):  # Log first 2 prompts
+                logger.debug(f"  Prompt {i}: {prompt[:200]}...")
 
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:
         """Log when LLM finishes.
@@ -112,7 +126,7 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
             **kwargs: Additional arguments
         """
         if self.verbose:
-            logger.debug("LLM finished")
+            logger.info("[LLM End] Generation complete")
 
     def on_llm_error(self, error: Exception, **kwargs: Any) -> None:
         """Handle LLM errors.
@@ -121,7 +135,11 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
             error: The exception that occurred
             **kwargs: Additional arguments
         """
-        logger.error(f"LLM error: {error}")
+        self._error_count += 1
+        logger.error(f"[LLM Error] {error}")
+
+        if self.verbose:
+            logger.debug(f"  Error details: {error}", exc_info=True)
 
     def on_chain_start(
         self, serialized: dict[str, Any], inputs: dict[str, Any], **kwargs: Any
@@ -134,7 +152,8 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
             **kwargs: Additional arguments
         """
         if self.verbose:
-            logger.debug("Chain started")
+            chain_name = serialized.get("name", "unknown")
+            logger.info(f"[Chain Start] {chain_name}")
 
     def on_chain_end(self, outputs: dict[str, Any], **kwargs: Any) -> None:
         """Log when chain finishes.
@@ -144,7 +163,7 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
             **kwargs: Additional arguments
         """
         if self.verbose:
-            logger.debug("Chain finished")
+            logger.info("[Chain End] Execution complete")
 
     def on_chain_error(self, error: Exception, **kwargs: Any) -> None:
         """Handle chain errors.
@@ -153,4 +172,25 @@ class EmpathyCallbackHandler(BaseCallbackHandler):
             error: The exception that occurred
             **kwargs: Additional arguments
         """
-        logger.error(f"Chain error: {error}")
+        self._error_count += 1
+        logger.error(f"[Chain Error] {error}")
+
+        if self.verbose:
+            logger.debug(f"  Error details: {error}", exc_info=True)
+
+    def get_stats(self) -> dict[str, int]:
+        """Get execution statistics.
+
+        Returns:
+            Dictionary with tool_calls and errors counts
+        """
+        return {
+            "tool_calls": self._tool_call_count,
+            "errors": self._error_count,
+        }
+
+    def reset_stats(self) -> None:
+        """Reset execution statistics."""
+        self._tool_call_count = 0
+        self._error_count = 0
+
