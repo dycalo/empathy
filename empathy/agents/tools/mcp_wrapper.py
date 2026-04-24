@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from langchain.tools import StructuredTool
+from langchain_core.tools import StructuredTool
 from pydantic import create_model
 
 if TYPE_CHECKING:

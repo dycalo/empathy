@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from langchain.tools import StructuredTool
+from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from empathy.core.models import Turn
