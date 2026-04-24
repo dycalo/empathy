@@ -49,6 +49,9 @@ def start(
     therapist_id: str | None = typer.Option(
         None, "--therapist-id", help="Pre-seed therapist config"
     ),
+    use_langchain: bool = typer.Option(
+        False, "--use-langchain", help="Use LangChain agent instead of BaseAgent"
+    ),
 ) -> None:
     """Start or join a dialogue session."""
     if side not in ("therapist", "client"):
@@ -109,15 +112,30 @@ def start(
 
     # --- Build agent ---
     from empathy.agents.client import ClientAgent
+    from empathy.agents.langchain_agent import LangChainAgent
     from empathy.agents.therapist import TherapistAgent
 
-    AgentClass = TherapistAgent if side == "therapist" else ClientAgent
-    agent = AgentClass(
-        knowledge=knowledge,
-        dialogue_background=background,
-        model=model,
-        mcp_provider=mcp_provider if not mcp_provider.is_empty else None,
-    )
+    if use_langchain:
+        # Use LangChain agent
+        agent = LangChainAgent(
+            side=cast(Speaker, side),
+            knowledge=knowledge,
+            dialogue_background=background,
+            model=model,
+            mcp_provider=mcp_provider if not mcp_provider.is_empty else None,
+            dialogue_dir=dialogue_dir,
+            transcript_path=dialogue_dir / "transcript.jsonl",
+        )
+        console.print("[dim]Using LangChain agent[/dim]")
+    else:
+        # Use BaseAgent (default)
+        AgentClass = TherapistAgent if side == "therapist" else ClientAgent
+        agent = AgentClass(
+            knowledge=knowledge,
+            dialogue_background=background,
+            model=model,
+            mcp_provider=mcp_provider if not mcp_provider.is_empty else None,
+        )
 
     # --- Load skills ---
     from empathy.extensions.skills import load_skills

@@ -99,8 +99,11 @@ class LangChainAgent:
         self._agent_graph: Any | None = None
         self._mcp_provider = mcp_provider
 
-    def _initialize_agent_executor(self) -> Any:
+    def _initialize_agent_executor(self, system_context: str = "") -> Any:
         """Initialize LangChain agent graph.
+
+        Args:
+            system_context: Additional system context from ContextBuilder
 
         Returns:
             Configured agent graph
@@ -115,19 +118,22 @@ class LangChainAgent:
 
         # Create system prompt based on side
         if self.side == "therapist":
-            system_prompt = (
+            base_prompt = (
                 "You are a therapist in a counseling session. "
                 "Use the available tools to manage clinical records, "
                 "review conversation history, and provide therapeutic responses. "
-                "When ready to speak, use the 'speak' tool."
+                "When ready to speak, use the 'speak' tool.\n\n"
             )
         else:  # client
-            system_prompt = (
+            base_prompt = (
                 "You are a client in a counseling session. "
                 "Use the available tools to track your emotions, "
                 "review conversation history, and express your thoughts. "
-                "When ready to speak, use the 'speak' tool."
+                "When ready to speak, use the 'speak' tool.\n\n"
             )
+
+        # Append system context if provided
+        system_prompt = base_prompt + system_context if system_context else base_prompt
 
         # Create agent using new API
         agent_graph = create_agent(
@@ -144,11 +150,12 @@ class LangChainAgent:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    def _call_agent_with_retry(self, instruction: str) -> str:
+    def _call_agent_with_retry(self, instruction: str, system_context: str = "") -> str:
         """Call agent with automatic retry on transient failures.
 
         Args:
             instruction: Controller instruction
+            system_context: Additional system context from ContextBuilder
 
         Returns:
             Agent output
@@ -157,7 +164,7 @@ class LangChainAgent:
             Exception: If all retries fail
         """
         if self._agent_graph is None:
-            self._agent_graph = self._initialize_agent_executor()
+            self._agent_graph = self._initialize_agent_executor(system_context)
 
         try:
             # Invoke agent graph with new API
@@ -220,7 +227,6 @@ class LangChainAgent:
         """
         try:
             # Build context using existing ContextBuilder
-            # This ensures system prompt and messages are consistent
             ctx = self._context_builder.build(
                 instruction=instruction,
                 transcript=transcript,
@@ -229,12 +235,26 @@ class LangChainAgent:
                 summary=summary,
             )
 
-            # For now, we'll use a simplified approach:
-            # Pass the instruction directly to the agent
-            # TODO: In Phase 5, integrate ctx.system and ctx.messages
-            # into LangChain's prompt template
+            # Combine system blocks into a single system context
+            system_context = "\n\n".join(
+                block.text for block in ctx.system if block.text
+            )
 
-            result = self._call_agent_with_retry(instruction)
+            # Format conversation history from messages
+            conversation_history = ""
+            if ctx.messages:
+                conversation_history = "\n\n".join(
+                    f"{msg['role'].upper()}: {msg['content']}"
+                    for msg in ctx.messages
+                )
+
+            # Combine instruction with conversation history
+            full_instruction = instruction
+            if conversation_history:
+                full_instruction = f"{conversation_history}\n\nCONTROLLER: {instruction}"
+
+            # Call agent with retry
+            result = self._call_agent_with_retry(full_instruction, system_context)
             return self._process_result(result)
 
         except Exception as e:
