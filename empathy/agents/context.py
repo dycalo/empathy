@@ -28,6 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from empathy.agents.feedback import FeedbackConfig, FeedbackManager
 from empathy.core.models import Draft, Speaker, Turn
 
 _SPEAK_TOOL: dict[str, Any] = {
@@ -142,6 +143,19 @@ class ContextBuilder:
     # ------------------------------------------------------------------ #
     mcp_tools: list[dict[str, Any]] = field(default_factory=list)
     mcp_instructions: str = ""
+    # ------------------------------------------------------------------ #
+    # Feedback configuration                                              #
+    # ------------------------------------------------------------------ #
+    feedback_config: FeedbackConfig = field(default_factory=FeedbackConfig)
+
+    def __post_init__(self):
+        """Initialize FeedbackManager with config."""
+        # FeedbackManager doesn't need dialogue_dir here since draft_history
+        # is passed directly to format_feedback
+        self._feedback_manager = FeedbackManager(
+            dialogue_dir=None,
+            config=self.feedback_config,
+        )
 
     def build(
         self,
@@ -250,7 +264,7 @@ class ContextBuilder:
             messages.insert(0, {"role": "user", "content": "(dialogue begins)"})
 
         # Build the final user turn: optional feedback + controller instruction
-        feedback = self.format_feedback(draft_history)
+        feedback = self.format_feedback(draft_history, instruction)
         final_user = (
             f"{feedback}\n\n---\n\nController instruction: {instruction}"
             if feedback
@@ -264,27 +278,38 @@ class ContextBuilder:
 
         return messages
 
-    def format_feedback(self, draft_history: list[Draft]) -> str:
-        """Summarize recent REJECT/EDIT feedback for the agent.
+    def format_feedback(self, draft_history: list[Draft], instruction: str = "") -> str:
+        """Summarize recent REJECT/EDIT feedback for the agent using FeedbackManager.
 
         Only includes drafts authored by this side, most recent first.
+        Uses intelligent sampling and formatting via FeedbackManager.
         """
-        recent = [
-            d
-            for d in draft_history[-(_MAX_FEEDBACK_DRAFTS * 2) :]
+        # Filter to this side's rejected/edited drafts
+        relevant_history = [
+            {
+                "turn_number": i,
+                "side": d.speaker,
+                "instruction": d.source_instruction,
+                "draft": d.content,
+                "result": "REJECT" if d.outcome == "rejected" else "EDIT",
+                "edited": d.final_content,
+                "rejection_reason": getattr(d, "rejection_reason", None),
+            }
+            for i, d in enumerate(draft_history)
             if d.outcome in ("rejected", "edited") and d.speaker == self.side
-        ][-_MAX_FEEDBACK_DRAFTS:]
+        ]
 
-        if not recent:
+        if not relevant_history:
             return ""
 
-        lines = ["## Feedback on your recent drafts (learn from these)"]
-        for draft in recent:
-            snippet = draft.content[:120]
-            if draft.outcome == "rejected":
-                lines.append(f'- REJECTED: "{snippet}"')
-            else:
-                original = draft.content[:80]
-                final = (draft.final_content or "")[:80]
-                lines.append(f'- EDITED: "{original}" → "{final}"')
-        return "\n".join(lines)
+        # Use FeedbackManager for intelligent selection and formatting
+        examples = self._feedback_manager.select_examples(
+            relevant_history,
+            instruction,
+            max_examples=self.feedback_config.max_examples,
+        )
+
+        return self._feedback_manager.format_examples(
+            examples,
+            format_style=self.feedback_config.format_style,
+        )

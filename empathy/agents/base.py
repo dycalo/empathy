@@ -19,6 +19,8 @@ from empathy.core.models import Draft, Speaker, Turn
 class GenerateResult:
     type: _Literal["draft", "clarification"]
     content: str
+    usage: dict[str, int] | None = None  # {"input_tokens": 1500, "output_tokens": 150, "cache_read_input_tokens": 800}
+    latency_ms: int | None = None
 
 
 _DEFAULT_MODEL = os.environ.get("EMPATHY_MODEL")
@@ -65,12 +67,14 @@ class BaseAgent:
         api_key: str | None = None,
         max_tokens: int = 1024,
         mcp_provider: Any | None = None,
+        ui_logger: Any | None = None,
     ) -> None:
         self.side = side
         self.model = model
         self.max_tokens = max_tokens
         self._knowledge = knowledge
         self._dialogue_background = dialogue_background
+        self._ui_logger = ui_logger
         base_url = os.environ.get("EMPATHY_BASE_URL")
         resolved_api_key = api_key or os.environ.get("EMPATHY_API_KEY")
         self._client = anthropic.Anthropic(api_key=resolved_api_key, base_url=base_url)
@@ -91,6 +95,14 @@ class BaseAgent:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def set_ui_logger(self, ui_logger: Any) -> None:
+        """Set UI logger for real-time tool call visualization.
+
+        Args:
+            ui_logger: Logger with write() method for UI output
+        """
+        self._ui_logger = ui_logger
 
     def generate_draft(
         self,
@@ -113,6 +125,8 @@ class BaseAgent:
             active_skills: Skills to inject into the dynamic system prompt zone.
             summary: Conversation summary for turns outside the active window.
         """
+        import time
+
         # Store current skills for tool use before loop
         if isinstance(active_skills, dict):
             self._current_skills = active_skills
@@ -137,17 +151,39 @@ class BaseAgent:
 
         messages: list[Any] = list(ctx.messages)
 
+        # Track API usage across all rounds
+        total_usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 0}
+        start_time = time.time()
+
         for round_idx in range(_MAX_TOOL_ROUNDS + 1):
             response = self._client.messages.create(
                 **base_kwargs,
                 messages=cast(list[MessageParam], messages),
             )
 
+            # Accumulate usage
+            if hasattr(response, "usage"):
+                total_usage["input_tokens"] += getattr(response.usage, "input_tokens", 0)
+                total_usage["output_tokens"] += getattr(response.usage, "output_tokens", 0)
+                total_usage["cache_read_input_tokens"] += getattr(response.usage, "cache_read_input_tokens", 0)
+
             # speak is a terminal tool — no tool_result sent back
             speak_uses = [b for b in response.content if b.type == "tool_use" and b.name == "speak"]
             if speak_uses:
                 raw = (speak_uses[0].input or {}).get("content", "")
-                return GenerateResult(type="draft", content=str(raw).strip())
+                latency_ms = int((time.time() - start_time) * 1000)
+
+                # Log speak tool call to UI
+                if self._ui_logger:
+                    self._ui_logger.write("[green]💬 Tool Call: speak[/green]")
+                    self._ui_logger.write(f"[dim]   Generating response...[/dim]")
+
+                return GenerateResult(
+                    type="draft",
+                    content=str(raw).strip(),
+                    usage=total_usage,
+                    latency_ms=latency_ms,
+                )
 
             tool_uses = [b for b in response.content if b.type == "tool_use"]
 
@@ -159,12 +195,31 @@ class BaseAgent:
                         f"No text block in Anthropic response (round {round_idx}). "
                         f"Block types: {[b.type for b in response.content]}"
                     )
-                return GenerateResult(type="clarification", content=text_block.text.strip())
+                latency_ms = int((time.time() - start_time) * 1000)
+                return GenerateResult(
+                    type="clarification",
+                    content=text_block.text.strip(),
+                    usage=total_usage,
+                    latency_ms=latency_ms,
+                )
 
             if round_idx == _MAX_TOOL_ROUNDS:
                 raise ValueError(
                     f"Tool-use loop exceeded {_MAX_TOOL_ROUNDS} rounds without a text response."
                 )
+
+            # Log tool calls to UI
+            if self._ui_logger:
+                for tool_use in tool_uses:
+                    tool_name = tool_use.name
+                    if tool_name == "speak":
+                        self._ui_logger.write("[green]💬 Tool Call: speak[/green]")
+                    else:
+                        self._ui_logger.write(f"[cyan]🔧 Tool Call: {tool_name}[/cyan]")
+                        # Show tool input if available
+                        if hasattr(tool_use, "input") and tool_use.input:
+                            input_preview = str(tool_use.input)[:80]
+                            self._ui_logger.write(f"[dim]   Input: {input_preview}...[/dim]")
 
             # Append assistant's tool-use turn, then the tool results.
             messages.append(
@@ -191,6 +246,12 @@ class BaseAgent:
                     ],
                 }
             )
+
+            # Log tool completion to UI
+            if self._ui_logger:
+                for tool_use in tool_uses:
+                    tool_name = tool_use.name
+                    self._ui_logger.write(f"[green]   ✓ {tool_name} completed[/green]")
 
         raise AssertionError("unreachable")  # loop always returns or raises above
 

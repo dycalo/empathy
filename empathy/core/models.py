@@ -90,6 +90,11 @@ class Draft:
     timestamp: datetime
     final_content: str | None = None
     hook_annotations: dict[str, Any] = field(default_factory=dict)
+    # Extended fields for feedback learning and training data export
+    conversation_window: dict[str, int] | None = None  # {"start_turn": 0, "end_turn": 5}
+    api_usage: dict[str, int] | None = None  # {"input_tokens": 1500, "output_tokens": 150, "cached_tokens": 800, "latency_ms": 2500}
+    rejection_reason: str | None = None  # Optional user-provided reason for rejection
+    model: str | None = None  # Model used for generation
 
     @classmethod
     def create(
@@ -98,6 +103,9 @@ class Draft:
         content: str,
         source_instruction: str,
         hook_annotations: dict[str, Any] | None = None,
+        conversation_window: dict[str, int] | None = None,
+        api_usage: dict[str, int] | None = None,
+        model: str | None = None,
     ) -> Draft:
         return cls(
             id=str(uuid.uuid4()),
@@ -107,10 +115,13 @@ class Draft:
             outcome="pending",
             timestamp=datetime.now(UTC),
             hook_annotations=hook_annotations or {},
+            conversation_window=conversation_window,
+            api_usage=api_usage,
+            model=model,
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "id": self.id,
             "speaker": self.speaker,
             "content": self.content,
@@ -120,6 +131,16 @@ class Draft:
             "final_content": self.final_content,
             "hook_annotations": self.hook_annotations,
         }
+        # Add extended fields only if present (backward compatibility)
+        if self.conversation_window is not None:
+            result["conversation_window"] = self.conversation_window
+        if self.api_usage is not None:
+            result["api_usage"] = self.api_usage
+        if self.rejection_reason is not None:
+            result["rejection_reason"] = self.rejection_reason
+        if self.model is not None:
+            result["model"] = self.model
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Draft:
@@ -132,6 +153,11 @@ class Draft:
             timestamp=datetime.fromisoformat(data["timestamp"]),
             final_content=data.get("final_content"),
             hook_annotations=data.get("hook_annotations", {}),
+            # Extended fields (backward compatible)
+            conversation_window=data.get("conversation_window"),
+            api_usage=data.get("api_usage"),
+            rejection_reason=data.get("rejection_reason"),
+            model=data.get("model"),
         )
 
 

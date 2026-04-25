@@ -50,10 +50,11 @@ class ConfirmState:
 class TranscriptPanel(RichLog):
     """Right panel showing dialogue transcript, auto-refreshes."""
 
-    def __init__(self, transcript_path: Path, side: str, **kwargs: Any) -> None:
+    def __init__(self, transcript_path: Path, side: str, show_tools: bool = True, **kwargs: Any) -> None:
         super().__init__(wrap=True, highlight=True, markup=True, **kwargs)
         self._transcript_path = transcript_path
         self._side = side
+        self._show_tools = show_tools
         self._last_count = 0
 
     def refresh_transcript(self) -> None:
@@ -271,6 +272,11 @@ class StatusBar(Static):
         super().__init__("", **kwargs)
         self._session = session
         self._skills = skills
+        self._tool_calls = 0
+
+    def increment_tool_calls(self) -> None:
+        """Increment tool call counter."""
+        self._tool_calls += 1
 
     def refresh_status(self) -> None:
         state = self._session.floor_status()
@@ -293,6 +299,7 @@ class StatusBar(Static):
             f" [bold {side_color}]{self._session.side}[/bold {side_color}]"
             f" │ floor: {floor_str}"
             f" │ turn: [cyan]{turn_num}[/cyan]"
+            f" │ tools: [dim]{self._tool_calls}[/dim]"
             f" │ model: [dim]{short_model}[/dim]"
             f" │ skills: [dim]{skills_count}[/dim]"
             f" │ [dim]{self._session.dialogue_dir.name}[/dim]"
@@ -657,6 +664,84 @@ class EmpathyApp(App[None]):
                 f"  Last speaker: [cyan]{st.get('last_speaker', 'none')}[/cyan]"
             )
 
+        elif base_cmd == "/feedback":
+            drafts = self._session.get_draft_history()
+            side_drafts = [d for d in drafts if d.speaker == self._session.side]
+
+            if args == "stats":
+                # Show statistics
+                total = len(side_drafts)
+                accepted = sum(1 for d in side_drafts if d.outcome == "accepted")
+                rejected = sum(1 for d in side_drafts if d.outcome == "rejected")
+                edited = sum(1 for d in side_drafts if d.outcome == "edited")
+                pending = sum(1 for d in side_drafts if d.outcome == "pending")
+
+                accept_rate = (accepted / total * 100) if total > 0 else 0
+                reject_rate = (rejected / total * 100) if total > 0 else 0
+                edit_rate = (edited / total * 100) if total > 0 else 0
+
+                self._write_log(
+                    f"[bold]Feedback Statistics:[/bold]\n"
+                    f"  Total drafts: [cyan]{total}[/cyan]\n"
+                    f"  Accepted: [green]{accepted}[/green] ({accept_rate:.1f}%)\n"
+                    f"  Rejected: [red]{rejected}[/red] ({reject_rate:.1f}%)\n"
+                    f"  Edited: [yellow]{edited}[/yellow] ({edit_rate:.1f}%)\n"
+                    f"  Pending: [dim]{pending}[/dim]"
+                )
+            elif args == "clear":
+                if typer.confirm("Clear all draft history? This cannot be undone."):
+                    # Clear draft-history.jsonl
+                    drafts_path = self._session.drafts_path
+                    if drafts_path.exists():
+                        drafts_path.unlink()
+                        self._write_log("[green]✓ Draft history cleared[/green]")
+                    else:
+                        self._write_log("[dim]No draft history to clear[/dim]")
+                else:
+                    self._write_log("[dim]Cancelled[/dim]")
+            else:
+                # Show recent feedback examples
+                rejected_edited = [
+                    d for d in side_drafts[-10:]
+                    if d.outcome in ("rejected", "edited")
+                ]
+                if rejected_edited:
+                    self._write_log("[bold]Recent Feedback (last 10):[/bold]")
+                    for d in rejected_edited:
+                        snippet = d.content[:80] + "..." if len(d.content) > 80 else d.content
+                        if d.outcome == "rejected":
+                            self._write_log(f"  [red]❌ REJECTED:[/red] \"{snippet}\"")
+                        elif d.outcome == "edited":
+                            final = (d.final_content or "")[:80]
+                            self._write_log(
+                                f"  [yellow]✏️ EDITED:[/yellow] \"{snippet[:40]}...\" → \"{final}...\""
+                            )
+                else:
+                    self._write_log("[dim]No rejected or edited drafts yet[/dim]")
+
+        elif base_cmd == "/tools":
+            # Show tool usage statistics
+            drafts = self._session.get_draft_history()
+            side_drafts = [d for d in drafts if d.speaker == self._session.side]
+
+            # Count API calls and tokens
+            total_calls = len([d for d in side_drafts if d.api_usage])
+            total_input = sum(d.api_usage.get("input_tokens", 0) for d in side_drafts if d.api_usage)
+            total_output = sum(d.api_usage.get("output_tokens", 0) for d in side_drafts if d.api_usage)
+            total_cached = sum(d.api_usage.get("cached_tokens", 0) for d in side_drafts if d.api_usage)
+            total_latency = sum(d.api_usage.get("latency_ms", 0) for d in side_drafts if d.api_usage)
+            avg_latency = (total_latency / total_calls) if total_calls > 0 else 0
+
+            self._write_log(
+                f"[bold]Tool Usage Statistics:[/bold]\n"
+                f"  Total API calls: [cyan]{total_calls}[/cyan]\n"
+                f"  Input tokens: [cyan]{total_input:,}[/cyan]\n"
+                f"  Output tokens: [cyan]{total_output:,}[/cyan]\n"
+                f"  Cached tokens: [green]{total_cached:,}[/green]\n"
+                f"  Avg latency: [dim]{avg_latency:.0f}ms[/dim]\n"
+                f"  Total latency: [dim]{total_latency:,}ms[/dim]"
+            )
+
         else:
             self._write_log(f"[red]Unknown command:[/red] {cmd}")
 
@@ -673,6 +758,14 @@ class EmpathyApp(App[None]):
         all_skills = always + (active_skills or []) or None
         self._write_log(f"[dim]> {instruction}[/dim]")
         self._write_log("[dim]Generating draft...[/dim]")
+
+        # Set UI logger for real-time tool call visualization
+        try:
+            log = self.query_one("#left-log", RichLog)
+            self._session.agent.set_ui_logger(log)
+        except (NoMatches, AttributeError):
+            pass
+
         self.run_worker(self._generate_and_confirm(instruction, all_skills), exclusive=True)
 
     async def _generate_and_confirm(
@@ -702,6 +795,20 @@ class EmpathyApp(App[None]):
             return
 
         draft = result
+
+        # Show API usage stats if available
+        if hasattr(draft, "hook_annotations") and draft.hook_annotations:
+            api_usage = draft.hook_annotations.get("api_usage")
+            if api_usage:
+                input_tokens = api_usage.get("input_tokens", 0)
+                output_tokens = api_usage.get("output_tokens", 0)
+                cached_tokens = api_usage.get("cached_tokens", 0)
+                latency_ms = api_usage.get("latency_ms", 0)
+                self._write_log(
+                    f"[dim]   API: {input_tokens} in, {output_tokens} out, "
+                    f"{cached_tokens} cached, {latency_ms}ms[/dim]"
+                )
+
         self._write_log(f"[bold yellow]Draft ready:[/bold yellow] {draft.content}")
 
         confirm_event: asyncio.Event = asyncio.Event()

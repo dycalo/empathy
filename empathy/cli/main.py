@@ -50,7 +50,7 @@ def start(
         None, "--therapist-id", help="Pre-seed therapist config"
     ),
     use_langchain: bool = typer.Option(
-        False, "--use-langchain", help="Use LangChain agent instead of BaseAgent"
+        True, "--use-langchain/--no-langchain", help="Use LangChain agent (default: True)"
     ),
 ) -> None:
     """Start or join a dialogue session."""
@@ -213,6 +213,115 @@ def run(
     )
 
     console.print(f"[green]✓[/green] {len(committed)} turns written to transcript.")
+
+
+@app.command()
+def export(
+    dialogue: str = typer.Argument(..., help="Dialogue ID or path to dialogue directory"),
+    format: str = typer.Option("sft", "--format", "-f", help="Export format: sft, rlhf, or sft,rlhf"),
+    output: Path = typer.Option(
+        Path("training_data"), "--output", "-o", help="Output directory"
+    ),
+    include: str = typer.Option(
+        "rejected,edited", "--include", help="For RLHF: rejected, edited, or rejected,edited"
+    ),
+    preview: bool = typer.Option(False, "--preview", help="Preview samples without writing"),
+    project: Path | None = typer.Option(None, "--project", "-p", help="Project dir (default: cwd)"),
+) -> None:
+    """Export dialogue data to training formats (SFT, RLHF).
+
+    Examples:
+        empathy export session_001 --format sft
+        empathy export session_001 --format rlhf --include rejected
+        empathy export session_001 --format sft,rlhf --output ./data
+    """
+    from empathy.storage.registry import list_dialogues
+    from empathy.utils.export import TrainingDataExporter
+
+    project_dir = (project or Path.cwd()).resolve()
+
+    # Resolve dialogue directory
+    dialogue_path = Path(dialogue)
+    if dialogue_path.exists() and dialogue_path.is_dir():
+        dialogue_dir = dialogue_path.resolve()
+    else:
+        # Try to find by ID in registry
+        dialogues = list_dialogues(project_dir)
+        target = next((d for d in dialogues if d.id == dialogue), None)
+        if not target:
+            console.print(f"[red]Dialogue '{dialogue}' not found.[/red]")
+            console.print("[dim]Provide a dialogue ID or path to dialogue directory.[/dim]")
+            raise typer.Exit(1)
+        dialogue_dir = project_dir / target.path
+
+    # Parse formats
+    formats = [f.strip() for f in format.split(",")]
+    for fmt in formats:
+        if fmt not in ("sft", "rlhf"):
+            console.print(f"[red]Invalid format: {fmt}[/red]")
+            console.print("[dim]Valid formats: sft, rlhf[/dim]")
+            raise typer.Exit(1)
+
+    # Parse include types
+    include_types = [t.strip() for t in include.split(",")]
+
+    # Initialize exporter
+    exporter = TrainingDataExporter(dialogue_dir)
+
+    # Export each format
+    all_stats = []
+    for fmt in formats:
+        output_file = output / f"{dialogue_dir.name}_{fmt}.jsonl"
+
+        if preview:
+            # Load and preview samples
+            turns, drafts = exporter.load_data()
+            if fmt == "sft":
+                samples = exporter.build_sft_samples(turns, drafts)
+            else:
+                samples = exporter.build_rlhf_samples(turns, drafts, include_types)
+
+            console.print(f"\n[bold]{fmt.upper()} Preview:[/bold]")
+            console.print(f"  Total samples: [cyan]{len(samples)}[/cyan]")
+            if samples:
+                console.print("\n[dim]First sample:[/dim]")
+                import json
+                console.print(json.dumps(samples[0], indent=2, ensure_ascii=False))
+        else:
+            # Export to file
+            stats = exporter.export(
+                output_path=output_file,
+                format=fmt,  # type: ignore
+                include_types=include_types if fmt == "rlhf" else None,
+            )
+            all_stats.append((fmt, stats))
+
+            console.print(
+                f"[green]✓[/green] Exported {fmt.upper()}: "
+                f"[cyan]{stats.sft_samples if fmt == 'sft' else stats.rlhf_samples}[/cyan] samples "
+                f"→ [dim]{output_file}[/dim]"
+            )
+
+    # Write stats file
+    if not preview and all_stats:
+        stats_file = output / f"{dialogue_dir.name}_stats.json"
+        stats_data = {
+            "dialogue_id": dialogue_dir.name,
+            "formats": {fmt: {
+                "samples": stats.sft_samples if fmt == "sft" else stats.rlhf_samples,
+                "output_file": str(output / f"{dialogue_dir.name}_{fmt}.jsonl"),
+            } for fmt, stats in all_stats},
+            "rejected_drafts": all_stats[0][1].rejected_drafts,
+            "edited_drafts": all_stats[0][1].edited_drafts,
+            "total_turns": all_stats[0][1].total_turns,
+            "export_timestamp": all_stats[0][1].export_timestamp,
+        }
+
+        import json
+        with stats_file.open("w", encoding="utf-8") as f:
+            json.dump(stats_data, f, indent=2, ensure_ascii=False)
+
+        console.print(f"\n[dim]Stats saved to {stats_file}[/dim]")
 
 
 @app.command()

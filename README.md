@@ -76,22 +76,22 @@ export EMPATHY_BASE_URL="https://api.your-proxy.com"
 在项目目录下，以 therapist 身份开始：
 
 ```bash
-# 使用默认 BaseAgent
+# 使用 LangChain Agent（默认，推荐）
 python -m empathy.cli.main start --side therapist
 
-# 或使用 LangChain Agent（推荐）
-python -m empathy.cli.main start --side therapist --use-langchain
+# 或使用轻量级 BaseAgent
+python -m empathy.cli.main start --side therapist --no-langchain
 ```
 
 首次运行时会提示创建新对话。在另一个终端以 client 身份加入：
 
 ```bash
-python -m empathy.cli.main start --side client --use-langchain
+python -m empathy.cli.main start --side client
 ```
 
 两端均连接后，对话即可开始。
 
-**LangChain Agent 优势**：
+**LangChain Agent 优势**（默认启用）：
 - 自动工具编排和 ReAct 推理
 - 内置重试机制（最多 3 次，指数退避）
 - 更强的错误处理和降级能力
@@ -129,7 +129,8 @@ python -m empathy.cli.main start \
   --project /path/to/proj \   # 可选：项目目录（默认当前目录）
   --client-id my_client \     # 可选：预设 client 原型 ID
   --therapist-id my_therapist # 可选：预设 therapist 原型 ID
-  --use-langchain             # 可选：使用 LangChain Agent（推荐）
+  --use-langchain             # 可选：使用 LangChain Agent（默认启用）
+  --no-langchain              # 可选：使用轻量级 BaseAgent
 ```
 
 #### 指令输入方式
@@ -200,6 +201,10 @@ python -m empathy.cli.main run \
 | `/agent model <id>` | 动态切换模型，立即生效 |
 | `/skills` | 列出当前加载的技能 |
 | `/session` | 查看完整 session 信息 |
+| `/feedback` | 查看最近被拒绝或编辑的草稿（用于 few-shot 学习） |
+| `/feedback stats` | 显示草稿接受率、拒绝率、编辑率统计 |
+| `/feedback clear` | 清除草稿历史（需确认） |
+| `/tools` | 查看 API 使用统计（token 使用、延迟等） |
 
 ### 管理对话列表
 
@@ -210,6 +215,103 @@ python -m empathy.cli.main start --side therapist
 # 删除指定对话
 python -m empathy.cli.main delete <dialogue-id>
 python -m empathy.cli.main delete <dialogue-id> --force  # 跳过确认
+```
+
+### 导出训练数据
+
+Empathy 支持将对话数据导出为标准的训练格式，用于模型微调或 RLHF（Reinforcement Learning from Human Feedback）训练。
+
+#### 导出格式
+
+**SFT（Supervised Fine-Tuning）格式**：
+- 数据源：`transcript.jsonl`（最终对话内容）
+- 用途：监督学习，学习正确的回复
+- 包含：所有被接受或编辑后的 turns
+
+**RLHF 格式**：
+- 数据源：`transcript.jsonl` + `draft-history.jsonl`
+- 用途：偏好学习，学习好坏对比
+- 包含：chosen（transcript）vs rejected（draft-history）
+- 预留：`feedback_label` 字段用于结构化标签
+
+#### 导出命令
+
+```bash
+# 导出 SFT 数据
+python -m empathy.cli.main export session_001 --format sft
+
+# 导出 RLHF 数据
+python -m empathy.cli.main export session_001 --format rlhf
+
+# 同时导出两种格式
+python -m empathy.cli.main export session_001 --format sft,rlhf --output ./data
+
+# 预览模式（不写入文件）
+python -m empathy.cli.main export session_001 --format rlhf --preview
+
+# 只包含被拒绝的草稿（RLHF）
+python -m empathy.cli.main export session_001 --format rlhf --include rejected
+
+# 包含被拒绝和编辑的草稿（RLHF）
+python -m empathy.cli.main export session_001 --format rlhf --include rejected,edited
+```
+
+#### 输出文件
+
+```
+training_data/
+├── session_001_sft.jsonl       # SFT 数据
+├── session_001_rlhf.jsonl      # RLHF 数据
+└── session_001_stats.json      # 统计信息
+```
+
+#### 数据格式示例
+
+**SFT 格式**：
+```json
+{
+  "prompt": {
+    "system": "You are the therapist in a structured therapeutic dialogue...",
+    "messages": [
+      {"role": "user", "content": "[CLIENT]: I've been feeling anxious..."},
+      {"role": "assistant", "content": "[THERAPIST]: Tell me more..."}
+    ],
+    "instruction": "validate their feelings"
+  },
+  "completion": "That sounds really challenging. I hear the frustration.",
+  "metadata": {
+    "dialogue_id": "session_001",
+    "turn_number": 3,
+    "timestamp": "2026-04-25T10:28:00Z",
+    "source": "accepted",
+    "model": "claude-haiku-4-5-20251001"
+  }
+}
+```
+
+**RLHF 格式**：
+```json
+{
+  "prompt": {
+    "system": "You are the therapist in a structured therapeutic dialogue...",
+    "messages": [
+      {"role": "user", "content": "[CLIENT]: I've been feeling anxious..."}
+    ],
+    "instruction": "explore their anxiety"
+  },
+  "chosen": "Can you help me understand what specifically triggers this anxiety?",
+  "rejected": "Let's talk about your childhood experiences with failure.",
+  "feedback_label": null,
+  "metadata": {
+    "dialogue_id": "session_001",
+    "turn_number": 5,
+    "timestamp": "2026-04-25T10:30:00Z",
+    "chosen_source": "accepted",
+    "rejected_draft_id": "uuid",
+    "rejection_reason": "too directive, jumped to conclusions",
+    "model": "claude-haiku-4-5-20251001"
+  }
+}
 ```
 
 ---
@@ -530,6 +632,37 @@ dialogues/session_001/
 ```
 
 `draft-history.jsonl` 中的数据包含原始草稿、编辑后内容及结果标注，可直接用于模型微调或偏好学习（RLHF）。
+
+**draft-history.jsonl 格式**：
+```json
+{
+  "id": "draft_uuid",
+  "speaker": "therapist",
+  "content": "Let's talk about your childhood...",
+  "source_instruction": "explore their anxiety",
+  "outcome": "rejected",
+  "final_content": null,
+  "timestamp": "2026-04-25T10:30:00Z",
+  "conversation_window": {
+    "start_turn": 1,
+    "end_turn": 4
+  },
+  "api_usage": {
+    "input_tokens": 1500,
+    "output_tokens": 150,
+    "cached_tokens": 800,
+    "latency_ms": 2500
+  },
+  "rejection_reason": "too directive, jumped to conclusions",
+  "model": "claude-haiku-4-5-20251001"
+}
+```
+
+**扩展字段说明**：
+- `conversation_window`：草稿生成时的对话窗口范围（用于重建 context）
+- `api_usage`：API 调用的 token 统计和延迟
+- `rejection_reason`：用户可选标注的拒绝原因
+- `model`：使用的模型名称
 
 **LangChain Agent 新增存储**：
 - `records/`：therapist 的临床记录，按类型分类存储

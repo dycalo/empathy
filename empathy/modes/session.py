@@ -119,7 +119,40 @@ class DialogueSession:
         )
         if result.type == "clarification":
             return ClarificationMessage(content=result.content)
-        draft = Draft.create(self.side, result.content, instruction)
+
+        # Calculate conversation window range
+        conversation_window = None
+        if window_result.turns:
+            # Find turn numbers in the windowed transcript
+            turn_numbers = [i for i, t in enumerate(transcript) if t in window_result.turns]
+            if turn_numbers:
+                conversation_window = {
+                    "start_turn": turn_numbers[0],
+                    "end_turn": turn_numbers[-1],
+                }
+
+        # Extract API usage
+        api_usage = None
+        if result.usage:
+            api_usage = {
+                "input_tokens": result.usage.get("input_tokens", 0),
+                "output_tokens": result.usage.get("output_tokens", 0),
+                "cached_tokens": result.usage.get("cache_read_input_tokens", 0),
+                "latency_ms": result.latency_ms or 0,
+            }
+
+        # Store API usage in hook_annotations for UI display
+        hook_annotations = {"api_usage": api_usage} if api_usage else {}
+
+        draft = Draft.create(
+            self.side,
+            result.content,
+            instruction,
+            conversation_window=conversation_window,
+            api_usage=api_usage,
+            model=self.agent.model,
+            hook_annotations=hook_annotations,
+        )
         append_draft(self.drafts_path, draft)
         return draft
 

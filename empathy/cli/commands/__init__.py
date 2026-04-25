@@ -43,6 +43,14 @@ COMMANDS: dict[str, CommandInfo] = {
         "description": "Show full session information",
         "usage": "/session",
     },
+    "feedback": {
+        "description": "Show feedback examples or stats. Usage: /feedback [stats|clear]",
+        "usage": "/feedback [stats|clear]",
+    },
+    "tools": {
+        "description": "Show tool usage statistics",
+        "usage": "/tools",
+    },
 }
 
 
