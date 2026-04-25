@@ -1,0 +1,9 @@
+client_id: client_anxious_professional
+therapist_id: therapist_cbt_oriented
+
+metadata:
+  session_number: 5
+  session_date: "2026-04-21"
+  session_type: individual
+  focus: work_presentation_anxiety
+  phase: mid_therapy

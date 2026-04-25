@@ -1,0 +1,46 @@
+{
+  "mcpServers": {
+    "time": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-time"],
+      "env": {},
+      "description": "Provides current time and date information"
+    },
+    "weather": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-weather"],
+      "env": {
+        "WEATHER_API_KEY": "your-api-key-here"
+      },
+      "description": "Provides weather information for locations"
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/allowed/path"],
+      "env": {},
+      "description": "Provides file system access to specified directories"
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "your-brave-api-key"
+      },
+      "description": "Provides web search capabilities via Brave Search API"
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"],
+      "env": {},
+      "description": "Provides database access to PostgreSQL"
+    },
+    "custom-biometric": {
+      "command": "python",
+      "args": ["/path/to/custom_mcp_server.py"],
+      "env": {
+        "DEVICE_PORT": "/dev/ttyUSB0"
+      },
+      "description": "Custom MCP server for biometric data (heart rate, GSR, etc.)"
+    }
+  }
+}

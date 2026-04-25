@@ -1,0 +1,26 @@
+# Dialogue Configuration File
+# This file specifies which user profiles to use for a specific dialogue session
+
+# Client profile to use (from ~/.empathy/users/)
+client_id: client_anxious_professional
+
+# Therapist profile to use (from ~/.empathy/users/)
+therapist_id: therapist_cbt_oriented
+
+# Session metadata
+metadata:
+  session_number: 5
+  session_date: "2026-04-21"
+  session_type: individual  # individual, group, couples, family
+  focus: work_presentation_anxiety
+  phase: mid_therapy  # early_therapy, mid_therapy, late_therapy, termination
+
+  # Optional: Additional context
+  notes: "Client experiencing acute anxiety about upcoming executive presentation"
+
+  # Optional: Track session series
+  series: "anxiety_treatment_2026"
+
+  # Optional: Supervision or training context
+  supervision: false
+  training_case: false

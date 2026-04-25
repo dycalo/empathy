@@ -1,0 +1,45 @@
+llm:
+  # Model configuration
+  model: claude-haiku-4-5-20251001  # Default model for both agents
+  # Alternatives: claude-sonnet-4-5, claude-opus-4-6
+
+  # Optional: Override model per side
+  # client_model: claude-sonnet-4-5
+  # therapist_model: claude-sonnet-4-5
+
+# Skills to enable for this user/dialogue
+enabled_skills:
+  # Client skills (behavioral patterns)
+  - anxious_attachment
+  - catastrophic_thinking
+  - defense_mechanism
+  - avoidance_behavior
+
+  # Therapist skills (therapeutic techniques)
+  - cbt_cognitive_restructuring
+  - dbt_distress_tolerance
+
+# MCP servers to enable
+enabled_mcp_servers: []
+  # Example MCP servers:
+  # - time              # Time/date utilities
+  # - weather           # Weather information
+  # - heart_rate        # Biometric data (if available)
+
+# Metadata for organization
+metadata:
+  created: "2026-04-25"
+  description: "Example configuration showing all available options"
+  tags:
+    - example
+    - template
+
+  # Optional: Track version or author
+  version: "1.0"
+  author: "empathy-team"
+
+# Optional: Custom settings
+# settings:
+#   max_turns: 50
+#   auto_save: true
+#   enable_summaries: true

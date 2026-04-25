@@ -1,0 +1,18 @@
+llm:
+  model: claude-sonnet-4-5  # Override default model for this client
+
+enabled_skills:
+  - anxious_attachment
+  - catastrophic_thinking
+  - defense_mechanism
+
+enabled_mcp_servers: []
+
+metadata:
+  created: "2026-04-25"
+  description: "Anxious professional client profile with perfectionism and work-related anxiety"
+  tags:
+    - anxiety
+    - perfectionism
+    - work-stress
+    - anxious-attachment

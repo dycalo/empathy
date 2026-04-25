@@ -1,0 +1,17 @@
+llm:
+  model: claude-sonnet-4-5  # Override default model for this therapist
+
+enabled_skills:
+  - cbt_cognitive_restructuring
+  - dbt_distress_tolerance
+
+enabled_mcp_servers: []
+
+metadata:
+  created: "2026-04-25"
+  description: "CBT-oriented therapist with expertise in anxiety and mood disorders"
+  tags:
+    - cbt
+    - anxiety-specialist
+    - structured-approach
+    - evidence-based
