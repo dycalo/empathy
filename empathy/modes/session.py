@@ -110,12 +110,28 @@ class DialogueSession:
         else:
             summary = window_result.summary
 
+        # Automatic emotion state transition (client only)
+        emotion_state = None
+        if self.side == "client":
+            from empathy.agents.emotion_manager import EmotionStateManager
+
+            emotion_manager = EmotionStateManager(self.dialogue_dir, self.agent.model)
+            current_state = emotion_manager.load_current()
+
+            # Get therapist's latest turn
+            therapist_turns = [t for t in transcript if t.speaker == "therapist"]
+            if therapist_turns:
+                last_therapist_turn = therapist_turns[-1]
+                emotion_state = emotion_manager.auto_update(last_therapist_turn, current_state)
+                emotion_manager.save(emotion_state)
+
         result = self.agent.generate_draft(
             instruction,
             window_result.turns,
             draft_history,
             active_skills=active_skills,
             summary=summary,
+            emotion_state=emotion_state,
         )
         if result.type == "clarification":
             return ClarificationMessage(content=result.content)

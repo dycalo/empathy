@@ -165,6 +165,7 @@ class ContextBuilder:
         *,
         active_skills: list[Any] | None = None,
         summary: str = "",
+        emotion_state: dict | None = None,
     ) -> ContextResult:
         """Assemble the full context for a single API call."""
         tools = [_SPEAK_TOOL] + list(self.mcp_tools)
@@ -180,17 +181,17 @@ class ContextBuilder:
             tools.append(build_skill_tool(self.side, skills_dict))
 
         return ContextResult(
-            system=self.build_system(),
+            system=self.build_system(emotion_state=emotion_state),
             messages=self.build_messages(transcript, draft_history, instruction, summary=summary),
             tools=tools,
         )
 
-    def build_system(self) -> list[dict[str, Any]]:
+    def build_system(self, emotion_state: dict | None = None) -> list[dict[str, Any]]:
         """Build the system prompt block list.
 
         Stable blocks (background, knowledge) are marked ephemeral so they can
-        be cached by Anthropic across turns. Dynamic blocks (skills, MCP) come
-        after the cache boundary and are never marked.
+        be cached by Anthropic across turns. Dynamic blocks (skills, MCP, emotion)
+        come after the cache boundary and are never marked.
         """
         blocks: list[dict[str, Any]] = [
             {"type": "text", "text": self.role_preamble},
@@ -214,6 +215,16 @@ class ContextBuilder:
                 }
             )
 
+        # Add emotion state block (client only, dynamic)
+        if emotion_state and self.side == "client":
+            emotion_text = self._build_emotion_block(emotion_state)
+            blocks.append(
+                {
+                    "type": "text",
+                    "text": emotion_text,
+                }
+            )
+
         if self.mcp_instructions:
             blocks.append(
                 {
@@ -223,6 +234,38 @@ class ContextBuilder:
             )
 
         return blocks
+
+    def _build_emotion_block(self, emotion_state: dict) -> str:
+        """Build emotion state block for client agent prompt.
+
+        Args:
+            emotion_state: Current emotion state dict
+
+        Returns:
+            Formatted emotion state text
+        """
+        primary = emotion_state.get("primary_emotion", "neutral")
+        intensity = emotion_state.get("intensity", 5)
+        physical = emotion_state.get("physical_sensations", [])
+        thoughts = emotion_state.get("thoughts", "")
+        change = emotion_state.get("change_direction", "stable")
+
+        physical_text = ", ".join(physical) if physical else "none"
+        thoughts_text = f'"{thoughts}"' if thoughts else "N/A"
+
+        return f"""## Your current emotional state
+
+Primary emotion: {primary} ({intensity}/10)
+Physical sensations: {physical_text}
+Current thoughts: {thoughts_text}
+Recent change: {change}
+
+When responding, embody this emotional state:
+- Reflect the intensity in your language and tone
+- Show physical sensations if relevant to the conversation
+- Let your thoughts influence what you choose to share
+- Adjust your openness based on your emotional state
+"""
 
     def build_messages(
         self,
