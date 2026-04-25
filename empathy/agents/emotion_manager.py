@@ -50,18 +50,26 @@ class EmotionStateManager:
         except (json.JSONDecodeError, OSError):
             return None
 
-    def auto_update(self, therapist_turn: Turn, current_state: dict | None) -> dict:
+    def auto_update(
+        self,
+        therapist_turn: Turn,
+        current_state: dict | None,
+        client_knowledge: str = "",
+        active_skills: list | dict | None = None,
+    ) -> dict:
         """Automatically update emotion state based on therapist's statement.
 
         Args:
             therapist_turn: Latest therapist turn
             current_state: Current emotion state (or None for initial state)
+            client_knowledge: Client's profile, personality, background
+            active_skills: Active behavioral patterns/skills
 
         Returns:
             Updated emotion state dict
         """
         # Build prompt for state transition
-        system_prompt = self._build_transition_prompt()
+        system_prompt = self._build_transition_prompt(client_knowledge, active_skills)
         user_message = self._build_transition_input(therapist_turn, current_state)
 
         # Call LLM for state transition
@@ -162,11 +170,33 @@ When responding, embody this emotional state:
             finally:
                 fcntl.flock(f, fcntl.LOCK_UN)
 
-    def _build_transition_prompt(self) -> str:
-        """Build system prompt for state transition."""
-        return """You are an emotion dynamics analyzer for a therapy client.
+    def _build_transition_prompt(self, client_knowledge: str = "", active_skills=None) -> str:
+        """Build system prompt for state transition.
 
-Your task is to analyze how the therapist's statement affects the client's emotional state.
+        Args:
+            client_knowledge: Client's profile and personality
+            active_skills: Active behavioral patterns
+
+        Returns:
+            System prompt string
+        """
+        base_prompt = "You are an emotion dynamics analyzer for a therapy client."
+
+        # Add client profile if provided
+        if client_knowledge:
+            base_prompt += f"\n\n## Client profile\n\n{client_knowledge}"
+
+        # Add active behavioral patterns if provided
+        if active_skills:
+            skills_text = self._format_skills(active_skills)
+            if skills_text:
+                base_prompt += f"\n\n## Active behavioral patterns\n\n{skills_text}"
+
+        base_prompt += """
+
+## Your task
+
+Analyze how the therapist's statement affects THIS CLIENT's emotional state, considering their specific personality, background, and behavioral patterns.
 
 Consider these dimensions:
 1. Validation level (0-1): Does therapist acknowledge client's feelings?
@@ -174,14 +204,15 @@ Consider these dimensions:
 3. Exploration depth (0-1): Does therapist invite deeper sharing?
 4. Emotional tone (0-1): Warmth of therapist's response?
 
-Based on this analysis, predict the updated emotion state.
+Based on this analysis and the client's profile, predict the updated emotion state.
 
 Rules:
 - Intensity changes should be gradual (max ±2 per turn)
-- High validation typically reduces anxiety/defensiveness
-- High challenge may increase anxiety or trigger defensiveness
-- Warm tone generally promotes openness
-- Consider the client's current state when predicting changes
+- Consider how THIS CLIENT's personality affects their reaction
+- High validation typically reduces anxiety/defensiveness (but depends on client)
+- High challenge may increase anxiety or trigger defensiveness (especially for defensive clients)
+- Warm tone generally promotes openness (but some clients may be suspicious)
+- Consider the client's current state and behavioral patterns
 
 Output ONLY valid JSON in this exact format:
 {
@@ -192,11 +223,44 @@ Output ONLY valid JSON in this exact format:
   "physical_sensations": ["chest tightness", "rapid heartbeat"],
   "thoughts": "Maybe I can talk about this",
   "change_direction": "decreasing",
-  "reasoning": "Therapist's validation reduced anxiety slightly"
+  "reasoning": "Therapist's validation reduced anxiety slightly, consistent with client's need for acceptance"
 }
 
 Valid emotions: anxious, sad, angry, happy, fearful, ashamed, guilty, hopeful, neutral
 Valid change_direction: increasing, decreasing, stable"""
+
+        return base_prompt
+
+    def _format_skills(self, active_skills) -> str:
+        """Format active skills for prompt injection.
+
+        Args:
+            active_skills: List or dict of skills
+
+        Returns:
+            Formatted skills text
+        """
+        if not active_skills:
+            return ""
+
+        # Convert to list if dict
+        if isinstance(active_skills, dict):
+            skills_list = list(active_skills.values())
+        else:
+            skills_list = active_skills
+
+        lines = []
+        for skill in skills_list:
+            # Handle both Skill objects and dicts
+            if hasattr(skill, "name") and hasattr(skill, "description"):
+                lines.append(f"- **{skill.name}**: {skill.description}")
+            elif isinstance(skill, dict):
+                name = skill.get("name", "Unknown")
+                desc = skill.get("description", "")
+                if desc:
+                    lines.append(f"- **{name}**: {desc}")
+
+        return "\n".join(lines)
 
     def _build_transition_input(self, therapist_turn: Turn, current_state: dict | None) -> str:
         """Build user message for state transition.

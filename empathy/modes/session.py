@@ -122,7 +122,16 @@ class DialogueSession:
             therapist_turns = [t for t in transcript if t.speaker == "therapist"]
             if therapist_turns:
                 last_therapist_turn = therapist_turns[-1]
-                emotion_state = emotion_manager.auto_update(last_therapist_turn, current_state)
+
+                # Get client knowledge and skills for personalized state transition
+                client_knowledge = self.agent.context_builder.knowledge
+
+                emotion_state = emotion_manager.auto_update(
+                    last_therapist_turn,
+                    current_state,
+                    client_knowledge=client_knowledge,
+                    active_skills=active_skills,
+                )
                 emotion_manager.save(emotion_state)
 
         result = self.agent.generate_draft(
