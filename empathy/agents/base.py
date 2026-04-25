@@ -113,6 +113,7 @@ class BaseAgent:
         active_skills: list[Any] | None = None,
         summary: str = "",
         emotion_state: dict | None = None,
+        clinical_observation: dict | None = None,
     ) -> GenerateResult:
         """Call the Anthropic API and return the raw draft text.
 
@@ -126,6 +127,7 @@ class BaseAgent:
             active_skills: Skills to inject into the dynamic system prompt zone.
             summary: Conversation summary for turns outside the active window.
             emotion_state: Current emotion state (client only).
+            clinical_observation: Current clinical observation (therapist only).
         """
         import time
 
@@ -142,6 +144,7 @@ class BaseAgent:
             active_skills=active_skills,
             summary=summary,
             emotion_state=emotion_state,
+            clinical_observation=clinical_observation,
         )
 
         base_kwargs: dict[str, Any] = {

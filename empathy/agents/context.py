@@ -166,6 +166,7 @@ class ContextBuilder:
         active_skills: list[Any] | None = None,
         summary: str = "",
         emotion_state: dict | None = None,
+        clinical_observation: dict | None = None,
     ) -> ContextResult:
         """Assemble the full context for a single API call."""
         tools = [_SPEAK_TOOL] + list(self.mcp_tools)
@@ -181,16 +182,16 @@ class ContextBuilder:
             tools.append(build_skill_tool(self.side, skills_dict))
 
         return ContextResult(
-            system=self.build_system(emotion_state=emotion_state),
+            system=self.build_system(emotion_state=emotion_state, clinical_observation=clinical_observation),
             messages=self.build_messages(transcript, draft_history, instruction, summary=summary),
             tools=tools,
         )
 
-    def build_system(self, emotion_state: dict | None = None) -> list[dict[str, Any]]:
+    def build_system(self, emotion_state: dict | None = None, clinical_observation: dict | None = None) -> list[dict[str, Any]]:
         """Build the system prompt block list.
 
         Stable blocks (background, knowledge) are marked ephemeral so they can
-        be cached by Anthropic across turns. Dynamic blocks (skills, MCP, emotion)
+        be cached by Anthropic across turns. Dynamic blocks (skills, MCP, emotion, observation)
         come after the cache boundary and are never marked.
         """
         blocks: list[dict[str, Any]] = [
@@ -222,6 +223,16 @@ class ContextBuilder:
                 {
                     "type": "text",
                     "text": emotion_text,
+                }
+            )
+
+        # Add clinical observation block (therapist only, dynamic)
+        if clinical_observation and self.side == "therapist":
+            observation_text = self._build_observation_block(clinical_observation)
+            blocks.append(
+                {
+                    "type": "text",
+                    "text": observation_text,
                 }
             )
 
@@ -265,6 +276,45 @@ When responding, embody this emotional state:
 - Show physical sensations if relevant to the conversation
 - Let your thoughts influence what you choose to share
 - Adjust your openness based on your emotional state
+"""
+
+    def _build_observation_block(self, clinical_observation: dict) -> str:
+        """Build clinical observation block for therapist agent prompt.
+
+        Args:
+            clinical_observation: Current clinical observation dict
+
+        Returns:
+            Formatted clinical observation text
+        """
+        presentation = clinical_observation.get("client_presentation", "neutral")
+        shift = clinical_observation.get("emotional_shift", "stable")
+        alliance = clinical_observation.get("therapeutic_alliance", "establishing")
+        effectiveness = clinical_observation.get("intervention_effectiveness", "N/A")
+        focus = clinical_observation.get("clinical_focus", [])
+        risks = clinical_observation.get("risk_factors", [])
+
+        focus_text = "\n".join(f"- {item}" for item in focus) if focus else "- None noted"
+        risk_text = "\n".join(f"- {item}" for item in risks) if risks else "- None identified"
+
+        return f"""## Clinical observation (therapist only)
+
+Client presentation: {presentation}
+Emotional shift: {shift}
+Therapeutic alliance: {alliance}
+Intervention effectiveness: {effectiveness}
+
+Clinical focus areas:
+{focus_text}
+
+Risk factors:
+{risk_text}
+
+Use this observation to guide your therapeutic approach:
+- Adjust your intervention based on effectiveness feedback
+- Address clinical focus areas when appropriate
+- Monitor and respond to risk factors
+- Maintain awareness of alliance quality
 """
 
     def build_messages(

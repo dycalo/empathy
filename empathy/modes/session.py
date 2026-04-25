@@ -156,6 +156,67 @@ class DialogueSession:
                         "reasoning": "Initial emotion state",
                     }
 
+        # Automatic clinical observation (therapist only)
+        clinical_observation = None
+        observation_change = None  # Track observation change for UI display
+        if self.side == "therapist":
+            import os
+
+            # Check if clinical observation is enabled
+            if os.getenv("EMPATHY_CLINICAL_OBSERVATION", "1") == "1":
+                from empathy.agents.clinical_manager import ClinicalObservationManager
+
+                clinical_manager = ClinicalObservationManager(self.dialogue_dir, self.agent.model)
+                current_observation = clinical_manager.load_current()
+
+                # Get client's latest turn
+                client_turns = [t for t in transcript if t.speaker == "client"]
+                if client_turns:
+                    last_client_turn = client_turns[-1]
+
+                    # Get therapist knowledge and skills for observation
+                    therapist_knowledge = self.agent.context_builder.knowledge
+
+                    # Get client emotion state if available
+                    client_emotion_state = None
+                    emotion_state_path = self.dialogue_dir / ".empathy" / "client" / "emotion-states" / "current.json"
+                    if emotion_state_path.exists():
+                        import json
+                        try:
+                            client_emotion_state = json.loads(emotion_state_path.read_text())
+                        except (json.JSONDecodeError, OSError):
+                            pass
+
+                    clinical_observation = clinical_manager.auto_generate(
+                        last_client_turn,
+                        current_observation,
+                        therapist_knowledge=therapist_knowledge,
+                        active_skills=active_skills,
+                        client_emotion_state=client_emotion_state,
+                    )
+                    clinical_manager.save(clinical_observation)
+
+                    # Track observation change for UI display
+                    if current_observation:
+                        observation_change = {
+                            "from_presentation": current_observation.get("client_presentation", "neutral"),
+                            "from_alliance": current_observation.get("therapeutic_alliance", "establishing"),
+                            "to_presentation": clinical_observation.get("client_presentation", "neutral"),
+                            "to_alliance": clinical_observation.get("therapeutic_alliance", "establishing"),
+                            "emotional_shift": clinical_observation.get("emotional_shift", "stable"),
+                            "reasoning": clinical_observation.get("reasoning", ""),
+                        }
+                    else:
+                        # Initial observation
+                        observation_change = {
+                            "from_presentation": None,
+                            "from_alliance": None,
+                            "to_presentation": clinical_observation.get("client_presentation", "neutral"),
+                            "to_alliance": clinical_observation.get("therapeutic_alliance", "establishing"),
+                            "emotional_shift": "initial",
+                            "reasoning": "Initial clinical observation",
+                        }
+
         result = self.agent.generate_draft(
             instruction,
             window_result.turns,
@@ -163,6 +224,7 @@ class DialogueSession:
             active_skills=active_skills,
             summary=summary,
             emotion_state=emotion_state,
+            clinical_observation=clinical_observation,
         )
         if result.type == "clarification":
             return ClarificationMessage(content=result.content)
@@ -194,6 +256,10 @@ class DialogueSession:
         # Add emotion change info for UI display (client only)
         if emotion_change:
             hook_annotations["emotion_change"] = emotion_change
+
+        # Add observation change info for UI display (therapist only)
+        if observation_change:
+            hook_annotations["observation_change"] = observation_change
 
         draft = Draft.create(
             self.side,

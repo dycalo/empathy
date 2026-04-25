@@ -236,6 +236,8 @@ class LangChainAgent:
         *,
         active_skills: list[Any] | None = None,
         summary: str = "",
+        emotion_state: dict | None = None,
+        clinical_observation: dict | None = None,
     ) -> GenerateResult:
         """Generate a draft using LangChain agent.
 
@@ -245,6 +247,8 @@ class LangChainAgent:
             draft_history: Draft history for feedback
             active_skills: Active skills
             summary: Conversation summary
+            emotion_state: Current emotion state (client only)
+            clinical_observation: Current clinical observation (therapist only)
 
         Returns:
             GenerateResult (draft or clarification)
@@ -257,6 +261,8 @@ class LangChainAgent:
                 draft_history=draft_history or [],
                 active_skills=active_skills,
                 summary=summary,
+                emotion_state=emotion_state,
+                clinical_observation=clinical_observation,
             )
 
             # Combine system blocks into a single system context
@@ -291,6 +297,8 @@ class LangChainAgent:
                 draft_history=draft_history,
                 active_skills=active_skills,
                 summary=summary,
+                emotion_state=emotion_state,
+                clinical_observation=clinical_observation,
             )
 
     def summarize(self, turns: list[Turn], previous_summary: str = "") -> str:
