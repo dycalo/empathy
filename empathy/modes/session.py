@@ -112,6 +112,7 @@ class DialogueSession:
 
         # Automatic emotion state transition (client only)
         emotion_state = None
+        emotion_change = None  # Track emotion change for UI display
         if self.side == "client":
             from empathy.agents.emotion_manager import EmotionStateManager
 
@@ -133,6 +134,27 @@ class DialogueSession:
                     active_skills=active_skills,
                 )
                 emotion_manager.save(emotion_state)
+
+                # Track emotion change for UI display
+                if current_state:
+                    emotion_change = {
+                        "from_emotion": current_state.get("primary_emotion", "neutral"),
+                        "from_intensity": current_state.get("intensity", 5),
+                        "to_emotion": emotion_state.get("primary_emotion", "neutral"),
+                        "to_intensity": emotion_state.get("intensity", 5),
+                        "change_direction": emotion_state.get("change_direction", "stable"),
+                        "reasoning": emotion_state.get("reasoning", ""),
+                    }
+                else:
+                    # Initial state
+                    emotion_change = {
+                        "from_emotion": None,
+                        "from_intensity": None,
+                        "to_emotion": emotion_state.get("primary_emotion", "neutral"),
+                        "to_intensity": emotion_state.get("intensity", 5),
+                        "change_direction": "initial",
+                        "reasoning": "Initial emotion state",
+                    }
 
         result = self.agent.generate_draft(
             instruction,
@@ -168,6 +190,10 @@ class DialogueSession:
 
         # Store API usage in hook_annotations for UI display
         hook_annotations = {"api_usage": api_usage} if api_usage else {}
+
+        # Add emotion change info for UI display (client only)
+        if emotion_change:
+            hook_annotations["emotion_change"] = emotion_change
 
         draft = Draft.create(
             self.side,

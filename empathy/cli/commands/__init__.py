@@ -47,6 +47,10 @@ COMMANDS: dict[str, CommandInfo] = {
         "description": "Show feedback examples or stats. Usage: /feedback [stats|clear]",
         "usage": "/feedback [stats|clear]",
     },
+    "emotion": {
+        "description": "Show current emotion state (client only). Usage: /emotion [history]",
+        "usage": "/emotion [history]",
+    },
     "tools": {
         "description": "Show tool usage statistics",
         "usage": "/tools",

@@ -434,6 +434,59 @@ class EmpathyApp(App[None]):
         except NoMatches:
             pass
 
+    def _display_emotion_change(self, emotion_change: dict) -> None:
+        """Display emotion state change in the log panel.
+
+        Args:
+            emotion_change: Dict with from/to emotion and intensity
+        """
+        from_emotion = emotion_change.get("from_emotion")
+        from_intensity = emotion_change.get("from_intensity")
+        to_emotion = emotion_change.get("to_emotion")
+        to_intensity = emotion_change.get("to_intensity")
+        change_direction = emotion_change.get("change_direction", "stable")
+        reasoning = emotion_change.get("reasoning", "")
+
+        # Color code based on intensity
+        def intensity_color(intensity: int) -> str:
+            if intensity >= 8:
+                return "red"
+            elif intensity >= 6:
+                return "yellow"
+            elif intensity >= 4:
+                return "white"
+            else:
+                return "green"
+
+        # Format emotion change
+        if from_emotion is None:
+            # Initial state
+            color = intensity_color(to_intensity)
+            self._write_log(
+                f"[cyan]💭 Emotion:[/cyan] [{color}]{to_emotion} ({to_intensity}/10)[/{color}]"
+            )
+        else:
+            # State transition
+            from_color = intensity_color(from_intensity)
+            to_color = intensity_color(to_intensity)
+
+            # Direction indicator
+            if change_direction == "increasing":
+                arrow = "↑"
+            elif change_direction == "decreasing":
+                arrow = "↓"
+            else:
+                arrow = "→"
+
+            self._write_log(
+                f"[cyan]💭 Emotion:[/cyan] [{from_color}]{from_emotion} {from_intensity}[/{from_color}] "
+                f"{arrow} [{to_color}]{to_emotion} {to_intensity}[/{to_color}]"
+            )
+
+        # Show reasoning if available
+        if reasoning:
+            self._write_log(f"[dim]   {reasoning}[/dim]")
+
     def _refresh_transcript(self) -> None:
         try:
             panel = self.query_one("#transcript-panel", TranscriptPanel)
@@ -719,6 +772,89 @@ class EmpathyApp(App[None]):
                 else:
                     self._write_log("[dim]No rejected or edited drafts yet[/dim]")
 
+        elif base_cmd == "/emotion":
+            # Show emotion state (client only)
+            if self._session.side != "client":
+                self._write_log("[yellow]Emotion tracking is only available for client side[/yellow]")
+            else:
+                from empathy.agents.emotion_manager import EmotionStateManager
+
+                emotion_manager = EmotionStateManager(
+                    self._session.dialogue_dir, self._session.agent.model
+                )
+                current_state = emotion_manager.load_current()
+
+                if not current_state:
+                    self._write_log("[dim]No emotion state recorded yet[/dim]")
+                else:
+                    # Display current state
+                    primary = current_state.get("primary_emotion", "neutral")
+                    intensity = current_state.get("intensity", 5)
+                    secondary = current_state.get("secondary_emotions", [])
+                    triggers = current_state.get("triggers", [])
+                    physical = current_state.get("physical_sensations", [])
+                    thoughts = current_state.get("thoughts", "")
+                    change = current_state.get("change_direction", "stable")
+                    reasoning = current_state.get("reasoning", "")
+
+                    # Color code intensity
+                    if intensity >= 8:
+                        color = "red"
+                    elif intensity >= 6:
+                        color = "yellow"
+                    elif intensity >= 4:
+                        color = "white"
+                    else:
+                        color = "green"
+
+                    self._write_log(f"[bold]Current Emotion State:[/bold]")
+                    self._write_log(
+                        f"  Primary: [{color}]{primary} ({intensity}/10)[/{color}]"
+                    )
+
+                    if secondary:
+                        self._write_log(f"  Secondary: [dim]{', '.join(secondary)}[/dim]")
+
+                    if triggers:
+                        self._write_log(f"  Triggers: [dim]{', '.join(triggers)}[/dim]")
+
+                    if physical:
+                        self._write_log(
+                            f"  Physical: [dim]{', '.join(physical)}[/dim]"
+                        )
+
+                    if thoughts:
+                        self._write_log(f"  Thoughts: [dim]\"{thoughts}\"[/dim]")
+
+                    self._write_log(f"  Change: [dim]{change}[/dim]")
+
+                    if reasoning:
+                        self._write_log(f"  Reasoning: [dim]{reasoning}[/dim]")
+
+                    # Show recent history if args == "history"
+                    if args == "history":
+                        history_path = emotion_manager.history_path
+                        if history_path.exists():
+                            import json
+
+                            lines = history_path.read_text().strip().split("\n")
+                            recent = lines[-5:]  # Last 5 states
+
+                            self._write_log("\n[bold]Recent History:[/bold]")
+                            for line in recent:
+                                try:
+                                    state = json.loads(line)
+                                    turn = state.get("turn_number", "?")
+                                    emotion = state.get("primary_emotion", "?")
+                                    intensity = state.get("intensity", "?")
+                                    self._write_log(
+                                        f"  Turn {turn}: {emotion} ({intensity}/10)"
+                                    )
+                                except json.JSONDecodeError:
+                                    pass
+                        else:
+                            self._write_log("[dim]No history available[/dim]")
+
         elif base_cmd == "/tools":
             # Show tool usage statistics
             drafts = self._session.get_draft_history()
@@ -808,6 +944,11 @@ class EmpathyApp(App[None]):
                     f"[dim]   API: {input_tokens} in, {output_tokens} out, "
                     f"{cached_tokens} cached, {latency_ms}ms[/dim]"
                 )
+
+            # Show emotion change if available (client only)
+            emotion_change = draft.hook_annotations.get("emotion_change")
+            if emotion_change:
+                self._display_emotion_change(emotion_change)
 
         self._write_log(f"[bold yellow]Draft ready:[/bold yellow] {draft.content}")
 
