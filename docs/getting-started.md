@@ -57,28 +57,11 @@ In another terminal, join as client:
 uv run empathy start --side client
 ```
 
-### Choose Agent Type
-
-**LangChain Agent (Default, Recommended):**
-```bash
-uv run empathy start --side therapist --use-langchain
-```
-
-Features:
+**Note**: Empathy uses LangChain Agent exclusively, providing:
 - Automatic tool orchestration with ReAct reasoning
 - Built-in retry mechanism (3 attempts, exponential backoff)
-- Enhanced error handling and fallback
-- Complete execution statistics and logging
-
-**BaseAgent (Lightweight):**
-```bash
-uv run empathy start --side therapist --no-langchain
-```
-
-Features:
-- Direct Anthropic API calls
-- Minimal overhead
-- Suitable for simple scenarios
+- Enhanced error handling and logging
+- Complete execution statistics
 
 ### Generate Dialogue
 

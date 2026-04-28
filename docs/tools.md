@@ -2,7 +2,7 @@
 
 ## Overview
 
-When using LangChain Agent (`--use-langchain`), agents can proactively call system tools to enhance dialogue generation. Tools are invoked automatically based on the agent's reasoning.
+Empathy's LangChain Agent can proactively call system tools to enhance dialogue generation. Tools are invoked automatically based on the agent's ReAct reasoning process.
 
 ## Terminal Tools
 
@@ -267,8 +267,8 @@ memory_manage(
 **Tool Call Failures:**
 - LangChain Agent automatically retries (up to 3 attempts)
 - Exponential backoff between retries
-- Falls back to BaseAgent if all retries fail
-- Errors logged but don't crash session
+- Errors logged with detailed context
+- Session continues with graceful degradation
 
 **Invalid Parameters:**
 - Tool returns error message
@@ -321,9 +321,9 @@ memory_manage(
 ## Troubleshooting
 
 ### Tools Not Available
-- Verify using `--use-langchain` flag
-- Check LangChain Agent initialization
-- Review startup logs for errors
+- Check LangChain Agent initialization in startup logs
+- Verify API key is set correctly
+- Review error messages for tool registration issues
 
 ### Tool Calls Failing
 - Check parameter types and required fields

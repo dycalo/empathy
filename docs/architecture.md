@@ -6,19 +6,20 @@ Empathy is a controllable agent framework for psychological dialogue generation.
 
 ## Core Components
 
-### 1. Dual Agent System
+### 1. LangChain Agent System
 
-**BaseAgent**
-- Direct Anthropic API integration
-- Lightweight, minimal overhead
-- Suitable for simple scenarios
-- Fallback for LangChain failures
-
-**LangChainAgent**
-- ReAct reasoning with tool orchestration
+**Unified Agent Implementation**
+- ReAct reasoning with intelligent tool orchestration
 - Automatic retry (3 attempts, exponential backoff)
-- Enhanced error handling
-- Complete execution tracking
+- Enhanced error handling and logging
+- Complete execution tracking and statistics
+- Centralized tool registry for dynamic tool management
+
+**Tool Registry**
+- Dynamic tool registration and management
+- Support for system tools, skills, and MCP integrations
+- Tool filtering by side, category, and enabled status
+- Metadata tracking for all registered tools
 
 ### 2. Three-Tier Configuration
 
@@ -89,7 +90,10 @@ Context Assembly (ContextBuilder)
   ├─ Messages (summary + windowed transcript)
   └─ Tools (speak, listen, record, emotion_state, memory_manage)
   ↓
-Agent Generation (BaseAgent or LangChainAgent)
+LangChain Agent Generation
+  ├─ ReAct reasoning loop
+  ├─ Tool orchestration
+  └─ Automatic retry on failure
   ↓
 Draft Creation
   ↓
@@ -194,9 +198,11 @@ External tool integration:
 - Available to LangChain Agent
 
 ### Custom Agents
-Subclass `BaseAgent`:
-- Override `_role_preamble()` for custom system prompt
-- Override `_invoke_tool()` for custom tool handling
+
+To extend the agent system:
+- Use the `ToolRegistry` to register custom tools
+- Implement custom tools using LangChain's `StructuredTool`
+- Override `_role_preamble()` in `LangChainAgent` for custom system prompts
 - Maintain compatibility with `DialogueSession`
 
 ## Performance Considerations
@@ -212,9 +218,9 @@ Subclass `BaseAgent`:
 - Prevents token overflow
 
 **Retry Strategy:**
-- LangChain Agent: 3 attempts, exponential backoff
-- Automatic fallback to BaseAgent on failure
-- Graceful degradation
+- LangChain Agent: 3 attempts with exponential backoff
+- Detailed error logging for debugging
+- Graceful degradation on persistent failures
 
 ## Security
 

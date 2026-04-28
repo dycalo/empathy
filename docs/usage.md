@@ -24,9 +24,9 @@ python -m empathy.cli.main start \
   --project /path/to/proj \   # Optional: project directory (default: current)
   --client-id my_client \     # Optional: use specific client profile
   --therapist-id my_therapist # Optional: use specific therapist profile
-  --use-langchain             # Optional: use LangChain Agent (default)
-  --no-langchain              # Optional: use lightweight BaseAgent
 ```
+
+**Note**: Empathy now uses LangChain Agent exclusively for enhanced tool orchestration and ReAct reasoning.
 
 ## TUI Interface
 
