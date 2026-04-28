@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from empathy.agents.base import BaseAgent
+from empathy.agents.langchain_agent import LangChainAgent
 from empathy.core.models import TurnSource
 from empathy.extensions.skills import Skill, load_skills
 from empathy.modes.auto import run_auto
@@ -20,13 +20,12 @@ def _write_skill(skills_dir: Path, filename: str, content: str) -> None:
     (skills_dir / filename).write_text(content)
 
 
-def _mock_agent(side: str = "therapist", response: str = "reply") -> BaseAgent:
-    agent = BaseAgent(side=side)  # type: ignore[arg-type]
-    block = MagicMock()
-    block.type = "text"
-    block.text = response
-    agent._client = MagicMock()
-    agent._client.messages.create.return_value = MagicMock(content=[block])
+def _mock_agent(side: str = "therapist", response: str = "reply") -> LangChainAgent:
+    agent = LangChainAgent(side=side)  # type: ignore[arg-type]
+    mock_response = MagicMock()
+    mock_response.content = response
+    agent.llm = MagicMock()
+    agent.llm.invoke = MagicMock(return_value=mock_response)
     return agent
 
 

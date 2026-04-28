@@ -45,4 +45,5 @@ def create_speak_tool() -> StructuredTool:
             "instead — do NOT call speak."
         ),
         args_schema=SpeakInput,
+        return_direct=True,
     )

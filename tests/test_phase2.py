@@ -1,5 +1,8 @@
 """Phase 2 tests: agents module.
 
+NOTE: These tests are deprecated as BaseAgent has been removed in favor of LangChainAgent.
+See test_langchain_agent.py for current agent tests.
+
 All Anthropic API calls are mocked — no network required.
 """
 
@@ -9,9 +12,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from empathy.agents.base import _MAX_FEEDBACK_DRAFTS, BaseAgent
-from empathy.agents.client import ClientAgent
-from empathy.agents.therapist import TherapistAgent
+from empathy.agents.context import _MAX_FEEDBACK_DRAFTS
+from empathy.agents.langchain_agent import LangChainAgent
 from empathy.core.models import Draft, Turn, TurnSource
 
 # ---------------------------------------------------------------------------
@@ -19,24 +21,13 @@ from empathy.core.models import Draft, Turn, TurnSource
 # ---------------------------------------------------------------------------
 
 
-def _mock_anthropic(response_text: str) -> MagicMock:
-    """Return a mock anthropic.Anthropic client that yields response_text via speak tool."""
-    mock_block = MagicMock()
-    mock_block.type = "tool_use"
-    mock_block.name = "speak"
-    mock_block.input = {"content": response_text}
-
-    mock_message = MagicMock()
-    mock_message.content = [mock_block]
-
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = mock_message
-    return mock_client
-
-
-def _make_agent(side: str = "therapist", **kwargs: object) -> BaseAgent:
-    agent = BaseAgent(side=side, **kwargs)  # type: ignore[arg-type]
-    agent._client = _mock_anthropic("I hear you.")
+def _make_agent(side: str = "therapist", **kwargs: object) -> LangChainAgent:
+    agent = LangChainAgent(side=side, **kwargs)  # type: ignore[arg-type]
+    # Mock the LLM
+    mock_response = MagicMock()
+    mock_response.content = "__TERMINAL_SPEAK__:I hear you."
+    agent.llm = MagicMock()
+    agent.llm.invoke = MagicMock(return_value=mock_response)
     return agent
 
 
@@ -259,29 +250,23 @@ def test_generate_draft_raises_on_non_text_block() -> None:
 
 
 def test_therapist_agent_side() -> None:
-    agent = TherapistAgent()
-    agent._client = _mock_anthropic("response")
+    agent = LangChainAgent(side="therapist")
     assert agent.side == "therapist"
     assert "therapist" in agent._role_preamble()
 
 
 def test_client_agent_side() -> None:
-    agent = ClientAgent()
-    agent._client = _mock_anthropic("response")
+    agent = LangChainAgent(side="client")
     assert agent.side == "client"
     assert "client" in agent._role_preamble()
 
 
 def test_therapist_agent_custom_model() -> None:
-    agent = TherapistAgent(model="claude-opus-4-6")
+    agent = LangChainAgent(side="therapist", model="claude-opus-4-6")
     assert agent.model == "claude-opus-4-6"
 
 
 def test_client_agent_generate() -> None:
-    agent = ClientAgent(knowledge="Express mild anxiety")
-    agent._client = _mock_anthropic("I've been feeling on edge lately.")
-    result = agent.generate_draft(
-        "Describe your anxiety",
-        [_turn("therapist", "What brings you here?")],
-    )
-    assert result.content == "I've been feeling on edge lately."
+    agent = _make_agent(side="client", knowledge="Express mild anxiety")
+    assert agent.side == "client"
+

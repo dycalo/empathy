@@ -7,7 +7,8 @@ Empathy enables researchers, therapists, and writers to generate, evaluate, and 
 ## ✨ Key Features
 
 - **Three-Tier Architecture** (Global/User/Dialogue): Hierarchical configuration system for flexible role definition and scenario customization
-- **Dual Agent System**: Choose between lightweight BaseAgent or enhanced LangChainAgent with ReAct reasoning and automatic retry
+- **LangChain Agent System**: Unified agent implementation with ReAct reasoning, automatic retry, and intelligent tool orchestration
+- **Centralized Tool Registry**: Dynamic tool registration and management for system tools, skills, and MCP integrations
 - **Human-in-the-Loop Control**: Accept, edit, or reject every generated response with complete training signal preservation
 - **Automatic State Management**: Cybernetic feedback loops for client emotion tracking and therapist clinical observations
 - **Modular Design**: Decoupled STATE (role), SKILL (behavior), and MCP (external data) components
@@ -17,7 +18,7 @@ Empathy enables researchers, therapists, and writers to generate, evaluate, and 
 
 ```bash
 # Install
-git clone <repo-url>
+git clone https://github.com/yourusername/empathy.git
 cd empathy
 uv venv && source .venv/bin/activate
 uv pip sync uv.lock
@@ -55,10 +56,10 @@ Once both sides connect, you can begin the dialogue. Type instructions in the co
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                      Agent System                            │
+│                   LangChain Agent System                     │
 ├─────────────────────────────────────────────────────────────┤
-│  BaseAgent       → Lightweight, direct API calls            │
 │  LangChainAgent  → ReAct reasoning, tool orchestration      │
+│  ToolRegistry    → Centralized tool management              │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -91,7 +92,7 @@ Once both sides connect, you can begin the dialogue. Type instructions in the co
 ```
 empathy/
 ├── empathy/
-│   ├── agents/          # Agent implementations (BaseAgent, LangChainAgent)
+│   ├── agents/          # LangChain agent implementation and tool registry
 │   ├── cli/             # TUI and command-line interface
 │   ├── extensions/      # Skills, config, MCP loading
 │   ├── modes/           # Session management
@@ -108,14 +109,24 @@ empathy/
 .venv/bin/python -m pytest tests/ -v
 
 # Core logic locations:
-# - empathy/agents/        Agent system
-# - empathy/modes/         Session management
-# - empathy/extensions/    Skills, config, MCP
-# - empathy/cli/           TUI interface
-# - empathy/storage/       Data persistence
+# - empathy/agents/           LangChain agent and tool registry
+# - empathy/agents/tools/     System tools (speak, listen, record, etc.)
+# - empathy/modes/            Session management
+# - empathy/extensions/       Skills, config, MCP
+# - empathy/cli/              TUI interface
+# - empathy/storage/          Data persistence
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## 🔄 Recent Changes
+
+**v0.2.0** - Architecture Simplification
+- Unified agent system: Migrated to LangChain-only implementation
+- Centralized tool registry for better tool management
+- Removed deprecated BaseAgent, ClientAgent, and TherapistAgent
+- Improved error handling and logging
+- Enhanced tool orchestration with ReAct reasoning
 
 ## 📜 License
 

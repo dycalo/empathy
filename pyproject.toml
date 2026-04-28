@@ -41,6 +41,33 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.pyright]
+# 类型检查严格程度
+typeCheckingMode = "standard"  # 或 "basic", "standard", "off"
+
+# Python 版本
+pythonVersion = "3.12"
+pythonPlatform = "Linux"
+
+# 包含/排除路径
+include = ["src", "tests"]
+exclude = ["**/__pycache__", "**/node_modules", "build", "dist"]
+
+# 额外路径（用于解析非标准导入）
+extraPaths = ["src"]
+
+# 报告级别
+reportMissingImports = "error"
+reportMissingTypeStubs = "warning"
+reportGeneralTypeIssues = "error"
+
+# venv 设置（如果 LSP 无法自动检测）
+venvPath = "."
+venv = ".venv"
+
+# 存根路径
+stubPath = "typings"
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100

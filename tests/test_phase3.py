@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from empathy.agents.base import BaseAgent
+from empathy.agents.langchain_agent import LangChainAgent
 from empathy.cli.confirm import ConfirmApp, ConfirmResult
 from empathy.cli.repl import _handle_command
 from empathy.core.models import TurnSource
@@ -16,21 +16,19 @@ from empathy.modes.session import DialogueSession
 # ---------------------------------------------------------------------------
 
 
-def _mock_agent(response: str = "Agent reply", is_draft: bool = True) -> BaseAgent:
-    agent = BaseAgent(side="therapist")
-    agent._client = MagicMock()
+def _mock_agent(response: str = "Agent reply", is_draft: bool = True) -> LangChainAgent:
+    agent = LangChainAgent(side="therapist")
+    agent.llm = MagicMock()
 
     if is_draft:
-        block = MagicMock()
-        block.type = "tool_use"
-        block.name = "speak"
-        block.input = {"content": response}
+        mock_response = MagicMock()
+        mock_response.content = f"__TERMINAL_SPEAK__:{response}"
+        agent.llm.invoke = MagicMock(return_value=mock_response)
     else:
-        block = MagicMock()
-        block.type = "text"
-        block.text = response
+        mock_response = MagicMock()
+        mock_response.content = response
+        agent.llm.invoke = MagicMock(return_value=mock_response)
 
-    agent._client.messages.create.return_value = MagicMock(content=[block])
     return agent
 
 

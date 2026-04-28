@@ -1,34 +1,43 @@
 """LangChain-based agent implementation for Empathy.
 
-This module provides a LangChain-powered alternative to BaseAgent,
-with enhanced tool management, error handling, and retry mechanisms.
+This module provides the primary agent implementation using LangChain's
+agent framework with enhanced tool management, error handling, and retry mechanisms.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from langchain.agents import create_agent
 from langchain_anthropic import ChatAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from empathy.agents.base import BaseAgent, GenerateResult
-from empathy.agents.callbacks import EmpathyCallbackHandler
-from empathy.agents.tools import create_all_tools
+from empathy.agents.context import ContextBuilder
 from empathy.core.models import Draft, Speaker, Turn
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = os.environ.get("EMPATHY_MODEL")
+_DEFAULT_MODEL = os.environ.get("EMPATHY_MODEL", "claude-haiku-4-5-20251001")
+
+
+@dataclass
+class GenerateResult:
+    """Result from agent generation."""
+
+    type: Literal["draft", "clarification"]
+    content: str
+    usage: dict[str, int] | None = None
+    latency_ms: int | None = None
 
 
 class LangChainAgent:
     """LangChain-powered agent for dialogue generation.
 
     This agent uses LangChain's AgentExecutor to manage tool calls,
-    with automatic retry, error handling, and fallback to BaseAgent.
+    with automatic retry and error handling.
     """
 
     def __init__(
@@ -65,17 +74,7 @@ class LangChainAgent:
         self.verbose = verbose
         self.dialogue_dir = dialogue_dir
         self.transcript_path = transcript_path
-
-        # Initialize BaseAgent as fallback
-        self.base_agent = BaseAgent(
-            side=side,
-            model=model,
-            knowledge=knowledge,
-            dialogue_background=dialogue_background,
-            api_key=api_key,
-            max_tokens=max_tokens,
-            mcp_provider=mcp_provider,
-        )
+        self._mcp_provider = mcp_provider
 
         # Initialize LangChain LLM
         resolved_api_key = api_key or os.environ.get("EMPATHY_API_KEY")
@@ -89,15 +88,26 @@ class LangChainAgent:
             temperature=0.7,
         )
 
-        # Initialize callback handler
-        self.callback_handler = EmpathyCallbackHandler(verbose=verbose)
+        # Initialize context builder
+        mcp_tools = mcp_provider.tool_params() if mcp_provider and not mcp_provider.is_empty else []
+        mcp_instructions = mcp_provider.instructions if mcp_provider else ""
 
-        # Context builder (reuse from BaseAgent)
-        self._context_builder = self.base_agent._context_builder
+        self._context_builder = ContextBuilder(
+            side=self.side,
+            role_preamble=self._role_preamble(),
+            knowledge=knowledge,
+            dialogue_background=dialogue_background,
+            mcp_tools=mcp_tools,
+            mcp_instructions=mcp_instructions,
+        )
 
         # Agent executor (initialized lazily)
         self._agent_graph: Any | None = None
-        self._mcp_provider = mcp_provider
+
+    @property
+    def context_builder(self) -> ContextBuilder:
+        """Get context builder for external access."""
+        return self._context_builder
 
     def _initialize_agent_executor(self, system_context: str = "") -> Any:
         """Initialize LangChain agent graph.
@@ -108,6 +118,8 @@ class LangChainAgent:
         Returns:
             Configured agent graph
         """
+        from empathy.agents.tools import create_all_tools
+
         # Create tools
         tools = create_all_tools(
             side=self.side,
@@ -194,21 +206,49 @@ class LangChainAgent:
             # Invoke agent graph with new API
             result = self._agent_graph.invoke({"messages": [("user", instruction)]})
 
+            # Debug logging
+            if self.verbose:
+                logger.debug(f"Agent result type: {type(result)}")
+                logger.debug(f"Agent result keys: {result.keys() if isinstance(result, dict) else 'N/A'}")
+
             # Extract the final message
             messages = result.get("messages", [])
+            if self.verbose:
+                logger.debug(f"Messages count: {len(messages)}")
+                if messages:
+                    logger.debug(f"Last message type: {type(messages[-1])}")
+
             if messages:
                 last_message = messages[-1]
                 # Handle different message types
                 if hasattr(last_message, "content"):
-                    return last_message.content
+                    content = last_message.content
+                    if self.verbose:
+                        logger.debug(f"Message content type: {type(content)}")
+                    # If content is a list (tool calls), extract text
+                    if isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                return item.get("text", "")
+                            elif hasattr(item, "text"):
+                                return item.text
+                        # If no text found, stringify the content
+                        return str(content)
+                    return str(content)
                 elif isinstance(last_message, dict):
-                    return last_message.get("content", str(last_message))
+                    content = last_message.get("content", "")
+                    if isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                return item.get("text", "")
+                        return str(content)
+                    return str(content) if content else str(last_message)
                 else:
                     return str(last_message)
 
             return "No response generated"
         except Exception as e:
-            logger.warning(f"Agent execution failed, retrying: {e}")
+            logger.error(f"Agent execution failed: {e}", exc_info=True)
             raise
 
     def _process_result(self, result: str) -> GenerateResult:
@@ -267,7 +307,7 @@ class LangChainAgent:
 
             # Combine system blocks into a single system context
             system_context = "\n\n".join(
-                block.text for block in ctx.system if block.text
+                block.get("text", "") for block in ctx.system if block.get("text")
             )
 
             # Format conversation history from messages
@@ -288,23 +328,11 @@ class LangChainAgent:
             return self._process_result(result)
 
         except Exception as e:
-            logger.error(f"LangChain agent failed, falling back to BaseAgent: {e}")
-
-            # Fallback to BaseAgent
-            return self.base_agent.generate_draft(
-                instruction=instruction,
-                transcript=transcript,
-                draft_history=draft_history,
-                active_skills=active_skills,
-                summary=summary,
-                emotion_state=emotion_state,
-                clinical_observation=clinical_observation,
-            )
+            logger.error(f"LangChain agent failed: {e}")
+            raise
 
     def summarize(self, turns: list[Turn], previous_summary: str = "") -> str:
         """Generate summary of conversation turns.
-
-        Delegates to BaseAgent for now.
 
         Args:
             turns: Turns to summarize
@@ -313,14 +341,70 @@ class LangChainAgent:
         Returns:
             Summary text
         """
-        return self.base_agent.summarize(turns, previous_summary)
+        if not turns:
+            return previous_summary
+
+        turns_text = "".join(f"[{t.speaker.upper()}]: {t.content}" for t in turns)
+        previous_section = (
+            f"## Previous summary (integrate, do not repeat){previous_summary}"
+            if previous_summary
+            else ""
+        )
+
+        prompt = f"""
+You are summarizing an ongoing therapeutic dialogue between a therapist and a client.
+Condense the following conversation turns into a concise summary (max 400 words).
+
+Focus on:
+1. Key emotional states and how they evolved
+2. Therapeutic themes discussed (e.g. anxiety, relationship patterns, coping strategies)
+3. Important disclosures or breakthroughs by the client
+4. Therapeutic techniques used by the therapist (e.g. reflection, reframing, CBT exercises)
+5. The current relational dynamic between therapist and client
+6. Any unresolved topics or open threads
+
+Do NOT include verbatim quotes. Summarize in third person.
+If a previous summary exists, integrate the new turns into it rather than restarting.
+
+{previous_section}
+## Turns to summarize
+
+{turns_text}"""
+
+        response = self.llm.invoke(prompt)
+        return response.content.strip() if hasattr(response, "content") else str(response).strip()
 
     def _role_preamble(self) -> str:
-        """Get role preamble.
-
-        Delegates to BaseAgent.
+        """Get role preamble based on side.
 
         Returns:
             Role preamble text
         """
-        return self.base_agent._role_preamble()
+        if self.side == "therapist":
+            return (
+                "You are a professional therapist conducting a structured counseling session. "
+                "A human controller directs you via brief instructions. "
+                "EVERY instruction is a dialogue directive — always generate a reply "
+                "by calling the speak tool. Never treat an instruction as a question "
+                "directed at you.\n\n"
+                "Examples of brief instructions and what to do:\n"
+                '- "hi" / "hello" → generate a warm therapeutic greeting\n'
+                '- "continue" / "go ahead" → produce the natural next utterance\n'
+                '- a single word or phrase (e.g. "anxiety", "deeper") → use it as a '
+                "thematic cue for your next line\n"
+                '- "reflect back" / "validate" → apply that therapeutic technique\n\n'
+                "Rules:\n"
+                "- ALWAYS call speak with your dialogue text — no stage directions, "
+                "role labels, or metadata.\n"
+                "- Maintain coherence with the conversation history in the messages.\n"
+                "- Only ask for clarification (plain text, no speak call) when the "
+                "instruction is truly ambiguous AND the conversation history provides "
+                "no context to resolve it. This should be rare."
+            )
+        else:  # client
+            return (
+                "You are a client attending a therapeutic counseling session. "
+                "A human controller is guiding your responses via brief instructions. "
+                "Generate a single natural utterance as the client. "
+                "Output ONLY the spoken text — no stage directions, role labels, or metadata."
+            )

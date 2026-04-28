@@ -3,6 +3,11 @@
 This module provides a unified interface for all tools available to agents,
 including system tools (speak, listen, record, emotion_state, memory_manage),
 skills, and MCP tools.
+
+The ToolRegistry class provides centralized tool management with support for:
+- Dynamic tool registration/unregistration
+- Tool filtering by side, category, and enabled status
+- Tool metadata tracking
 """
 
 from __future__ import annotations
@@ -24,7 +29,30 @@ __all__ = [
     "create_emotion_state_tool",
     "create_memory_manage_tool",
     "create_all_tools",
+    "ToolRegistry",
+    "ToolMetadata",
+    "create_tool_registry",
 ]
+
+
+# Re-export registry classes
+def __getattr__(name: str) -> type:
+    """Lazy import for registry classes."""
+    if name in ("ToolRegistry", "ToolMetadata", "create_tool_registry"):
+        from empathy.agents.tools.registry import (
+            ToolMetadata,
+            ToolRegistry,
+            create_tool_registry,
+        )
+
+        if name == "ToolRegistry":
+            return ToolRegistry
+        elif name == "ToolMetadata":
+            return ToolMetadata
+        elif name == "create_tool_registry":
+            return create_tool_registry
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def create_speak_tool() -> BaseTool:
@@ -83,29 +111,10 @@ def create_all_tools(
     Returns:
         List of LangChain tools
     """
-    tools: list[BaseTool] = []
+    from empathy.agents.tools.registry import create_tool_registry
 
-    # System tools
-    tools.append(create_speak_tool())
-    tools.append(create_listen_tool(transcript_path))
+    # Use the registry to create and manage tools
+    registry = create_tool_registry(side, dialogue_dir, transcript_path, mcp_provider)
 
-    # Side-specific tools
-    record_tool = create_record_tool(side, dialogue_dir)
-    if record_tool:
-        tools.append(record_tool)
-
-    emotion_tool = create_emotion_state_tool(side, dialogue_dir)
-    if emotion_tool:
-        tools.append(emotion_tool)
-
-    # Memory tool (both sides)
-    tools.append(create_memory_manage_tool(side, dialogue_dir))
-
-    # MCP tools (if available)
-    if mcp_provider and not mcp_provider.is_empty:
-        from empathy.agents.tools.mcp_wrapper import create_mcp_tools
-
-        mcp_tools = create_mcp_tools(mcp_provider)
-        tools.extend(mcp_tools)
-
-    return tools
+    # Return all enabled tools for this side
+    return registry.list_tools(side=side, enabled_only=True)

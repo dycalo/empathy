@@ -7,18 +7,21 @@ Draft-history is still written so the full record is preserved.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from empathy.agents.base import BaseAgent
 from empathy.core.models import Draft, Speaker, Turn, TurnSource
 from empathy.storage.drafts import append_draft, update_draft_outcome
 from empathy.storage.transcript import append_turn, read_turns
+
+if TYPE_CHECKING:
+    from empathy.agents.langchain_agent import LangChainAgent
 
 _SIDES: list[Speaker] = ["therapist", "client"]
 
 
 def run_auto(
-    therapist: BaseAgent,
-    client: BaseAgent,
+    therapist: LangChainAgent,
+    client: LangChainAgent,
     transcript_path: Path,
     drafts_path: Path,
     *,

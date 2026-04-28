@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from empathy.agents.base import BaseAgent
 from empathy.agents.context import ConversationWindow
 from empathy.core.models import ClarificationMessage, Draft, Speaker, Turn, TurnSource
 from empathy.extensions.skills import Skill
@@ -16,6 +15,9 @@ from empathy.storage.state import read_state
 from empathy.storage.state import release_floor as _release
 from empathy.storage.summary import read_summary, write_summary
 from empathy.storage.transcript import append_turn, read_turns
+
+if TYPE_CHECKING:
+    from empathy.agents.langchain_agent import LangChainAgent
 
 _window = ConversationWindow()  # shared default window (buffer_turns=6)
 
@@ -30,7 +32,7 @@ class DialogueSession:
 
     dialogue_dir: Path
     side: Speaker
-    agent: BaseAgent
+    agent: LangChainAgent
 
     # ------------------------------------------------------------------
     # Derived paths

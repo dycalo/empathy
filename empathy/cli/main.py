@@ -49,9 +49,6 @@ def start(
     therapist_id: str | None = typer.Option(
         None, "--therapist-id", help="Pre-seed therapist config"
     ),
-    use_langchain: bool = typer.Option(
-        True, "--use-langchain/--no-langchain", help="Use LangChain agent (default: True)"
-    ),
 ) -> None:
     """Start or join a dialogue session."""
     if side not in ("therapist", "client"):
@@ -111,31 +108,17 @@ def start(
         )
 
     # --- Build agent ---
-    from empathy.agents.client import ClientAgent
     from empathy.agents.langchain_agent import LangChainAgent
-    from empathy.agents.therapist import TherapistAgent
 
-    if use_langchain:
-        # Use LangChain agent
-        agent = LangChainAgent(
-            side=cast(Speaker, side),
-            knowledge=knowledge,
-            dialogue_background=background,
-            model=model,
-            mcp_provider=mcp_provider if not mcp_provider.is_empty else None,
-            dialogue_dir=dialogue_dir,
-            transcript_path=dialogue_dir / "transcript.jsonl",
-        )
-        console.print("[dim]Using LangChain agent[/dim]")
-    else:
-        # Use BaseAgent (default)
-        AgentClass = TherapistAgent if side == "therapist" else ClientAgent
-        agent = AgentClass(
-            knowledge=knowledge,
-            dialogue_background=background,
-            model=model,
-            mcp_provider=mcp_provider if not mcp_provider.is_empty else None,
-        )
+    agent = LangChainAgent(
+        side=cast(Speaker, side),
+        knowledge=knowledge,
+        dialogue_background=background,
+        model=model,
+        mcp_provider=mcp_provider if not mcp_provider.is_empty else None,
+        dialogue_dir=dialogue_dir,
+        transcript_path=dialogue_dir / "transcript.jsonl",
+    )
 
     # --- Load skills ---
     from empathy.extensions.skills import load_skills
@@ -177,8 +160,7 @@ def run(
         console.print(f"[red]Dialogue directory not found:[/red] {dialogue_dir}")
         raise typer.Exit(1)
 
-    from empathy.agents.client import ClientAgent
-    from empathy.agents.therapist import TherapistAgent
+    from empathy.agents.langchain_agent import LangChainAgent
     from empathy.extensions.config import load_config
     from empathy.extensions.psych import load_dialogue_background, load_side_knowledge
     from empathy.modes.auto import run_auto
@@ -188,15 +170,21 @@ def run(
     config_c = load_config("client", dialogue_dir=dialogue_dir)
     resolved_model_c: str = config_c.get("llm", {}).get("model", model)
 
-    therapist = TherapistAgent(
+    therapist = LangChainAgent(
+        side="therapist",
         model=resolved_model_t,
         knowledge=load_side_knowledge("therapist", dialogue_dir=dialogue_dir),
         dialogue_background=load_dialogue_background(),
+        dialogue_dir=dialogue_dir,
+        transcript_path=dialogue_dir / "transcript.jsonl",
     )
-    client = ClientAgent(
+    client = LangChainAgent(
+        side="client",
         model=resolved_model_c,
         knowledge=load_side_knowledge("client", dialogue_dir=dialogue_dir),
         dialogue_background=load_dialogue_background(),
+        dialogue_dir=dialogue_dir,
+        transcript_path=dialogue_dir / "transcript.jsonl",
     )
 
     console.print(

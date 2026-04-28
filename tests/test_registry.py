@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from empathy.agents.base import BaseAgent
+from empathy.agents.langchain_agent import LangChainAgent
 from empathy.core.models import DialogueMeta
 from empathy.modes.session import DialogueSession
 from empathy.storage.registry import (
@@ -197,8 +197,8 @@ def test_yaml_datetime_survives_reload(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _mock_agent() -> BaseAgent:
-    agent = BaseAgent(side="therapist")
+def _mock_agent() -> LangChainAgent:
+    agent = LangChainAgent(side="therapist")
     block = MagicMock()
     block.type = "tool_use"
     block.name = "speak"
