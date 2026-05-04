@@ -120,6 +120,36 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## 🔄 Recent Changes
 
+**2026-05-04**
+
+### System Tool Refactoring
+
+- **speak**: Terminal marker changed from `__TERMINAL_SPEAK__:content` to XML `<terminal_speak>content</terminal_speak>`. Added empty-content validation.
+- **listen (removed)**: The `listen` tool was deleted as it was fully redundant — `ContextBuilder.build_messages()` already provides the complete transcript to the agent.
+- **context / session simplification**: Removed conversation window management. The full transcript is now passed directly; the agent decides its own focus scope without external summary injection.
+
+### Long-Term Memory Migration: Dialogue-Level → User-Level + Neo4j
+
+- **New storage layer** (`empathy/storage/`):
+  - `memory_models.py` — `Memory` dataclass + `MemoryType` literal
+  - `memory_repo.py` — `MemoryRepository` ABC + `InMemoryMemoryRepository` for testing/fallback
+  - `neo4j_repo.py` — `Neo4jMemoryRepository` using the `neo4j` Python driver
+    - Graph model: `(:User {user_id})-[:HAS_MEMORY]->(:Memory)`
+    - Auto schema: unique constraint + Lucene full-text index `memory_content_index`
+    - Singleton factory `get_memory_repository()`: auto-selects backend based on `NEO4J_URI` env var
+
+- **memory_manage tool rewrite**:
+  - No longer reads/writes JSON files (`<dialogue_dir>/.empathy/<side>/memories/` deprecated)
+  - `create_memory_manage_tool(user_id)` — returns `None` when `user_id` is missing, disabling the tool
+  - All operations go through the repository layer with user isolation enforced by the bound `user_id`
+
+- **user_id propagation**:
+  - `dialogue.yaml` fields `client_id` / `therapist_id` serve as the user-level memory key
+  - `resolve_user_id()` parses config → injects into `LangChainAgent` → injects into `ToolRegistry` → conditionally registers memory tool
+  - Same user's memories persist across all their dialogues
+
+- **CLI dialogue filtering**: When `--client-id` or `--therapist-id` is specified, the dialogue list only shows matching (or unassigned) dialogues.
+
 **v0.2.0** - Architecture Simplification
 - Unified agent system: Migrated to LangChain-only implementation
 - Centralized tool registry for better tool management
