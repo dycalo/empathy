@@ -7,7 +7,7 @@ including system tools, skills, and MCP tools.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -152,7 +152,7 @@ class ToolRegistry:
             List of matching tool metadata
         """
         metadata = []
-        for name, meta in self._metadata.items():
+        for _name, meta in self._metadata.items():
             # Apply filters
             if enabled_only and not meta.enabled:
                 continue
@@ -199,6 +199,7 @@ class ToolRegistry:
 
 def create_tool_registry(
     side: Speaker,
+    user_id: str | None,
     dialogue_dir: Path,
     transcript_path: Path,
     mcp_provider: McpProvider | None = None,
@@ -207,6 +208,7 @@ def create_tool_registry(
 
     Args:
         side: Speaker side ("therapist" or "client")
+        user_id: User identifier for user-level tools
         dialogue_dir: Path to dialogue directory
         transcript_path: Path to transcript.jsonl
         mcp_provider: Optional MCP provider for external tools
@@ -216,7 +218,6 @@ def create_tool_registry(
     """
     from empathy.agents.tools import (
         create_emotion_state_tool,
-        create_listen_tool,
         create_memory_manage_tool,
         create_record_tool,
         create_speak_tool,
@@ -226,7 +227,6 @@ def create_tool_registry(
 
     # Register system tools (available to both sides)
     registry.register(create_speak_tool(), side=None, category="system")
-    registry.register(create_listen_tool(transcript_path), side=None, category="system")
 
     # Register side-specific tools
     record_tool = create_record_tool(side, dialogue_dir)
@@ -237,10 +237,10 @@ def create_tool_registry(
     if emotion_tool:
         registry.register(emotion_tool, side="client", category="system")
 
-    # Register memory tool (both sides)
-    registry.register(
-        create_memory_manage_tool(side, dialogue_dir), side=None, category="system"
-    )
+    # Register memory tool (both sides, user-level)
+    memory_tool = create_memory_manage_tool(user_id)
+    if memory_tool:
+        registry.register(memory_tool, side=None, category="system")
 
     # Register MCP tools if available
     if mcp_provider and not mcp_provider.is_empty:

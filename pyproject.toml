@@ -23,6 +23,8 @@ dependencies = [
     "tenacity>=8.0",
     # MCP client
     "mcp>=0.9.0",
+    # Graph database for long-term memory
+    "neo4j>=5.0",
 ]
 
 [project.scripts]

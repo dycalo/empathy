@@ -52,6 +52,7 @@ class LangChainAgent:
         mcp_provider: Any | None = None,
         dialogue_dir: Any = None,
         transcript_path: Any = None,
+        user_id: str | None = None,
         verbose: bool = False,
     ) -> None:
         """Initialize LangChain agent.
@@ -66,6 +67,7 @@ class LangChainAgent:
             mcp_provider: Optional MCP provider
             dialogue_dir: Path to dialogue directory
             transcript_path: Path to transcript.jsonl
+            user_id: User identifier for user-level tools (e.g. memory)
             verbose: Enable verbose logging
         """
         self.side = side
@@ -74,6 +76,7 @@ class LangChainAgent:
         self.verbose = verbose
         self.dialogue_dir = dialogue_dir
         self.transcript_path = transcript_path
+        self.user_id = user_id
         self._mcp_provider = mcp_provider
 
         # Initialize LangChain LLM
@@ -123,6 +126,7 @@ class LangChainAgent:
         # Create tools
         tools = create_all_tools(
             side=self.side,
+            user_id=self.user_id,
             dialogue_dir=self.dialogue_dir,
             transcript_path=self.transcript_path,
             mcp_provider=self._mcp_provider,
@@ -135,14 +139,12 @@ class LangChainAgent:
                 "## Available Tools\n"
                 "You have access to several tools to help you:\n"
                 "- **speak**: Submit your dialogue turn when ready to respond\n"
-                "- **listen**: Review conversation history (recent/all/range/search)\n"
                 "- **record**: Manage clinical records (assessment/progress_note/treatment_plan/observation)\n"
                 "- **memory_manage**: Store and retrieve important patterns, insights, and key events\n\n"
                 "## Workflow\n"
-                "1. Use 'listen' to review recent conversation if needed\n"
-                "2. Use 'record' to document clinical observations\n"
-                "3. Use 'memory_manage' to store important insights\n"
-                "4. Use 'speak' when ready to respond to the client\n\n"
+                "1. Use 'record' to document clinical observations\n"
+                "2. Use 'memory_manage' to store important insights\n"
+                "3. Use 'speak' when ready to respond to the client\n\n"
                 "## Important\n"
                 "- ALWAYS call 'speak' with your dialogue text when ready to respond\n"
                 "- Use tools proactively to maintain clinical records and track patterns\n"
@@ -154,14 +156,12 @@ class LangChainAgent:
                 "## Available Tools\n"
                 "You have access to several tools:\n"
                 "- **speak**: Submit your dialogue turn when ready to respond\n"
-                "- **listen**: Review conversation history\n"
                 "- **emotion_state**: Track your emotional state (primary_emotion/intensity/triggers)\n"
                 "- **memory_manage**: Store important memories and insights\n\n"
                 "## Workflow\n"
                 "1. Use 'emotion_state' to update how you're feeling\n"
-                "2. Use 'listen' to review what was discussed\n"
-                "3. Use 'memory_manage' to note important realizations\n"
-                "4. Use 'speak' when ready to respond\n\n"
+                "2. Use 'memory_manage' to note important realizations\n"
+                "3. Use 'speak' when ready to respond\n\n"
                 "## Important\n"
                 "- ALWAYS call 'speak' with your dialogue text when ready to respond\n"
                 "- Express your emotions naturally through the tools and dialogue\n"
@@ -260,9 +260,17 @@ class LangChainAgent:
         Returns:
             GenerateResult
         """
-        # Check for terminal speak marker
-        if result.startswith("__TERMINAL_SPEAK__:"):
-            content = result.replace("__TERMINAL_SPEAK__:", "").strip()
+        from empathy.agents.tools.speak import (
+            TERMINAL_SPEAK_CLOSE,
+            TERMINAL_SPEAK_OPEN,
+        )
+
+        open_idx = result.find(TERMINAL_SPEAK_OPEN)
+        close_idx = result.find(TERMINAL_SPEAK_CLOSE)
+
+        if open_idx != -1 and close_idx != -1 and open_idx < close_idx:
+            start = open_idx + len(TERMINAL_SPEAK_OPEN)
+            content = result[start:close_idx].strip()
             return GenerateResult(type="draft", content=content)
 
         # Otherwise, it's a clarification
@@ -330,49 +338,6 @@ class LangChainAgent:
         except Exception as e:
             logger.error(f"LangChain agent failed: {e}")
             raise
-
-    def summarize(self, turns: list[Turn], previous_summary: str = "") -> str:
-        """Generate summary of conversation turns.
-
-        Args:
-            turns: Turns to summarize
-            previous_summary: Previous summary to build on
-
-        Returns:
-            Summary text
-        """
-        if not turns:
-            return previous_summary
-
-        turns_text = "".join(f"[{t.speaker.upper()}]: {t.content}" for t in turns)
-        previous_section = (
-            f"## Previous summary (integrate, do not repeat){previous_summary}"
-            if previous_summary
-            else ""
-        )
-
-        prompt = f"""
-You are summarizing an ongoing therapeutic dialogue between a therapist and a client.
-Condense the following conversation turns into a concise summary (max 400 words).
-
-Focus on:
-1. Key emotional states and how they evolved
-2. Therapeutic themes discussed (e.g. anxiety, relationship patterns, coping strategies)
-3. Important disclosures or breakthroughs by the client
-4. Therapeutic techniques used by the therapist (e.g. reflection, reframing, CBT exercises)
-5. The current relational dynamic between therapist and client
-6. Any unresolved topics or open threads
-
-Do NOT include verbatim quotes. Summarize in third person.
-If a previous summary exists, integrate the new turns into it rather than restarting.
-
-{previous_section}
-## Turns to summarize
-
-{turns_text}"""
-
-        response = self.llm.invoke(prompt)
-        return response.content.strip() if hasattr(response, "content") else str(response).strip()
 
     def _role_preamble(self) -> str:
         """Get role preamble based on side.

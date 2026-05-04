@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from empathy.agents.langchain_agent import LangChainAgent
-from empathy.core.models import Turn, TurnSource
 
 
 class TestLangChainAgent:
@@ -40,11 +39,16 @@ class TestLangChainAgent:
         assert agent.model == "claude-haiku-4-5-20251001"
         assert agent.dialogue_dir == dialogue_dir
         assert agent.transcript_path == transcript_path
-        assert agent.base_agent is not None
+        assert agent.user_id is None
         assert agent._agent_graph is None  # Lazy initialization
 
     def test_process_result_terminal_speak(self, dialogue_dir: Path, transcript_path: Path):
         """Test processing result with terminal speak marker."""
+        from empathy.agents.tools.speak import (
+            TERMINAL_SPEAK_CLOSE,
+            TERMINAL_SPEAK_OPEN,
+        )
+
         agent = LangChainAgent(
             side="therapist",
             dialogue_dir=dialogue_dir,
@@ -52,7 +56,7 @@ class TestLangChainAgent:
             api_key="test-key",
         )
 
-        result = agent._process_result("__TERMINAL_SPEAK__:Hello, how are you feeling?")
+        result = agent._process_result(f"{TERMINAL_SPEAK_OPEN}Hello, how are you feeling?{TERMINAL_SPEAK_CLOSE}")
 
         assert result.type == "draft"
         assert result.content == "Hello, how are you feeling?"
@@ -61,6 +65,11 @@ class TestLangChainAgent:
         self, dialogue_dir: Path, transcript_path: Path
     ):
         """Test processing result with terminal speak marker and extra whitespace."""
+        from empathy.agents.tools.speak import (
+            TERMINAL_SPEAK_CLOSE,
+            TERMINAL_SPEAK_OPEN,
+        )
+
         agent = LangChainAgent(
             side="client",
             dialogue_dir=dialogue_dir,
@@ -68,7 +77,7 @@ class TestLangChainAgent:
             api_key="test-key",
         )
 
-        result = agent._process_result("__TERMINAL_SPEAK__:  I'm feeling anxious  ")
+        result = agent._process_result(f"{TERMINAL_SPEAK_OPEN}  I'm feeling anxious  {TERMINAL_SPEAK_CLOSE}")
 
         assert result.type == "draft"
         assert result.content == "I'm feeling anxious"
@@ -89,6 +98,11 @@ class TestLangChainAgent:
 
     def test_process_result_empty_speak(self, dialogue_dir: Path, transcript_path: Path):
         """Test processing result with empty speak content."""
+        from empathy.agents.tools.speak import (
+            TERMINAL_SPEAK_CLOSE,
+            TERMINAL_SPEAK_OPEN,
+        )
+
         agent = LangChainAgent(
             side="therapist",
             dialogue_dir=dialogue_dir,
@@ -96,7 +110,7 @@ class TestLangChainAgent:
             api_key="test-key",
         )
 
-        result = agent._process_result("__TERMINAL_SPEAK__:")
+        result = agent._process_result(f"{TERMINAL_SPEAK_OPEN}{TERMINAL_SPEAK_CLOSE}")
 
         assert result.type == "draft"
         assert result.content == ""
@@ -169,57 +183,18 @@ class TestLangChainAgent:
         call_kwargs = mock_create_agent.call_args[1]
         assert "CBT techniques" in call_kwargs["system_prompt"]
 
-    def test_fallback_to_base_agent_on_error(
+    def test_agent_initialization_with_user_id(
         self, dialogue_dir: Path, transcript_path: Path
     ):
-        """Test that agent falls back to BaseAgent on error."""
+        """Test that LangChainAgent accepts and stores user_id."""
         agent = LangChainAgent(
-            side="therapist",
+            side="client",
+            model="claude-haiku-4-5-20251001",
             dialogue_dir=dialogue_dir,
             transcript_path=transcript_path,
+            user_id="u_123",
             api_key="test-key",
         )
 
-        # Mock _call_agent_with_retry to raise an exception
-        with patch.object(agent, "_call_agent_with_retry", side_effect=Exception("Test error")):
-            # Mock base_agent.generate_draft to return a result
-            mock_result = MagicMock()
-            mock_result.type = "draft"
-            mock_result.content = "Fallback response"
-            agent.base_agent.generate_draft = MagicMock(return_value=mock_result)
-
-            result = agent.generate_draft(
-                instruction="Say hello",
-                transcript=[],
-            )
-
-            assert result.type == "draft"
-            assert result.content == "Fallback response"
-            agent.base_agent.generate_draft.assert_called_once()
-
-    def test_summarize_delegates_to_base_agent(
-        self, dialogue_dir: Path, transcript_path: Path
-    ):
-        """Test that summarize delegates to BaseAgent."""
-        agent = LangChainAgent(
-            side="therapist",
-            dialogue_dir=dialogue_dir,
-            transcript_path=transcript_path,
-            api_key="test-key",
-        )
-
-        turns = [
-            Turn.create(
-                speaker="therapist",
-                source=TurnSource.AGENT_ACCEPT,
-                content="Hello",
-            )
-        ]
-
-        # Mock base_agent.summarize
-        agent.base_agent.summarize = MagicMock(return_value="Summary text")
-
-        result = agent.summarize(turns, "Previous summary")
-
-        assert result == "Summary text"
-        agent.base_agent.summarize.assert_called_once_with(turns, "Previous summary")
+        assert agent.side == "client"
+        assert agent.user_id == "u_123"

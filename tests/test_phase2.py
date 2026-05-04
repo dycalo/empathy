@@ -22,10 +22,15 @@ from empathy.core.models import Draft, Turn, TurnSource
 
 
 def _make_agent(side: str = "therapist", **kwargs: object) -> LangChainAgent:
+    from empathy.agents.tools.speak import (
+        TERMINAL_SPEAK_CLOSE,
+        TERMINAL_SPEAK_OPEN,
+    )
+
     agent = LangChainAgent(side=side, **kwargs)  # type: ignore[arg-type]
     # Mock the LLM
     mock_response = MagicMock()
-    mock_response.content = "__TERMINAL_SPEAK__:I hear you."
+    mock_response.content = f"{TERMINAL_SPEAK_OPEN}I hear you.{TERMINAL_SPEAK_CLOSE}"
     agent.llm = MagicMock()
     agent.llm.invoke = MagicMock(return_value=mock_response)
     return agent

@@ -17,12 +17,17 @@ from empathy.modes.session import DialogueSession
 
 
 def _mock_agent(response: str = "Agent reply", is_draft: bool = True) -> LangChainAgent:
+    from empathy.agents.tools.speak import (
+        TERMINAL_SPEAK_CLOSE,
+        TERMINAL_SPEAK_OPEN,
+    )
+
     agent = LangChainAgent(side="therapist")
     agent.llm = MagicMock()
 
     if is_draft:
         mock_response = MagicMock()
-        mock_response.content = f"__TERMINAL_SPEAK__:{response}"
+        mock_response.content = f"{TERMINAL_SPEAK_OPEN}{response}{TERMINAL_SPEAK_CLOSE}"
         agent.llm.invoke = MagicMock(return_value=mock_response)
     else:
         mock_response = MagicMock()

@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 
 from empathy.agents.tools.emotion_state import create_emotion_state_tool
-from empathy.agents.tools.listen import create_listen_tool
 from empathy.core.models import Turn, TurnSource
 
 
@@ -51,26 +50,6 @@ class TestConcurrentFileAccess:
         state_path.write_text(json.dumps({"turn_number": 1}, ensure_ascii=False))
 
         return dialogue_dir
-
-    def test_concurrent_listen_reads(self, transcript_file: Path):
-        """Test multiple concurrent reads with shared locks."""
-        tool = create_listen_tool(transcript_file)
-
-        def read_transcript(reader_id: int) -> tuple[int, str]:
-            """Read transcript and return reader ID and result."""
-            result = tool.func(scope="all")
-            return (reader_id, result)
-
-        # Run 10 concurrent reads
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(read_transcript, i) for i in range(10)]
-            results = [future.result() for future in as_completed(futures)]
-
-        # All reads should succeed
-        assert len(results) == 10
-        for reader_id, result in results:
-            assert "Turn 0" in result
-            assert "Turn 9" in result
 
     def test_concurrent_emotion_state_writes(self, dialogue_dir: Path):
         """Test multiple concurrent writes with exclusive locks."""

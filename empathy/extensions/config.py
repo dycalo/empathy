@@ -75,3 +75,20 @@ def load_config(
         merged = _deep_merge(merged, dialogue_dict)
 
     return merged
+
+
+def resolve_user_id(side: str, dialogue_dir: Path | None) -> str | None:
+    """Resolve user_id for the given side from dialogue.yaml.
+
+    Args:
+        side: Speaker side ("therapist" or "client")
+        dialogue_dir: Path to dialogue directory
+
+    Returns:
+        User ID (client_id or therapist_id) or None if not found
+    """
+    if dialogue_dir is None:
+        return None
+
+    dialogue_dict = _load_yaml(dialogue_dir / "dialogue.yaml")
+    return dialogue_dict.get(f"{side}_id")

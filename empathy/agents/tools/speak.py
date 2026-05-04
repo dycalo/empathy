@@ -5,11 +5,18 @@ from __future__ import annotations
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
+TERMINAL_SPEAK_TAG = "terminal_speak"
+TERMINAL_SPEAK_OPEN = f"<{TERMINAL_SPEAK_TAG}>"
+TERMINAL_SPEAK_CLOSE = f"</{TERMINAL_SPEAK_TAG}>"
+
 
 class SpeakInput(BaseModel):
     """Input schema for speak tool."""
 
-    content: str = Field(description="Your exact dialogue utterance")
+    content: str = Field(
+        min_length=1,
+        description="Your exact dialogue utterance",
+    )
 
 
 def create_speak_tool() -> StructuredTool:
@@ -30,8 +37,9 @@ def create_speak_tool() -> StructuredTool:
         This is a terminal action - after calling this, the agent
         will stop and wait for controller confirmation.
         """
-        # Return special marker that LangChainAgent will detect
-        return f"__TERMINAL_SPEAK__:{content}"
+        if not content:
+            raise ValueError("Content cannot be empty")
+        return f"{TERMINAL_SPEAK_OPEN}{content}{TERMINAL_SPEAK_CLOSE}"
 
     return StructuredTool.from_function(
         func=speak_func,

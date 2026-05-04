@@ -3,36 +3,50 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from empathy.agents.tools.emotion_state import create_emotion_state_tool
-from empathy.agents.tools.listen import create_listen_tool
 from empathy.agents.tools.memory_manage import create_memory_manage_tool
 from empathy.agents.tools.record import create_record_tool
 from empathy.agents.tools.speak import create_speak_tool
-from empathy.core.models import Turn, TurnSource
 
 
 class TestSpeakTool:
     """Tests for speak tool."""
 
-    def test_speak_returns_terminal_marker(self):
-        """Test that speak tool returns the terminal marker."""
+    def test_speak_returns_xml_marker(self):
+        """Test that speak tool returns the XML terminal marker."""
+        from empathy.agents.tools.speak import (
+            TERMINAL_SPEAK_CLOSE,
+            TERMINAL_SPEAK_OPEN,
+        )
+
         tool = create_speak_tool()
         result = tool.func(content="Hello, how are you feeling today?")
 
-        assert result.startswith("__TERMINAL_SPEAK__:")
+        assert result.startswith(TERMINAL_SPEAK_OPEN)
+        assert result.endswith(TERMINAL_SPEAK_CLOSE)
         assert "Hello, how are you feeling today?" in result
 
-    def test_speak_strips_content(self):
-        """Test that speak tool handles content with whitespace."""
+    def test_speak_preserves_content_whitespace(self):
+        """Test that speak tool preserves content whitespace inside XML tags."""
+        from empathy.agents.tools.speak import (
+            TERMINAL_SPEAK_CLOSE,
+            TERMINAL_SPEAK_OPEN,
+        )
+
         tool = create_speak_tool()
         result = tool.func(content="  Hello  ")
 
-        assert "__TERMINAL_SPEAK__:  Hello  " == result
+        assert result == f"{TERMINAL_SPEAK_OPEN}  Hello  {TERMINAL_SPEAK_CLOSE}"
+
+    def test_speak_rejects_empty_content(self):
+        """Test that speak tool rejects empty content."""
+        tool = create_speak_tool()
+        with pytest.raises(ValueError, match="Content cannot be empty"):
+            tool.func(content="")
 
     def test_speak_tool_name(self):
         """Test that speak tool has correct name."""
@@ -44,131 +58,6 @@ class TestSpeakTool:
         tool = create_speak_tool()
         assert "Submit your dialogue turn" in tool.description
         assert "speak" in tool.description.lower()
-
-
-class TestListenTool:
-    """Tests for listen tool."""
-
-    @pytest.fixture
-    def transcript_file(self, tmp_path: Path) -> Path:
-        """Create a temporary transcript file with test data."""
-        transcript_path = tmp_path / "transcript.jsonl"
-
-        # Create test turns
-        turns = [
-            Turn.create(
-                speaker="therapist",
-                source=TurnSource.AGENT_ACCEPT,
-                content="Hello, how are you feeling today?",
-            ),
-            Turn.create(
-                speaker="client",
-                source=TurnSource.AGENT_ACCEPT,
-                content="I'm feeling anxious about work.",
-            ),
-            Turn.create(
-                speaker="therapist",
-                source=TurnSource.AGENT_ACCEPT,
-                content="Can you tell me more about what's making you anxious?",
-            ),
-            Turn.create(
-                speaker="client",
-                source=TurnSource.AGENT_ACCEPT,
-                content="I have a big presentation coming up and I'm worried.",
-            ),
-            Turn.create(
-                speaker="therapist",
-                source=TurnSource.AGENT_ACCEPT,
-                content="That sounds stressful. What specifically worries you?",
-            ),
-        ]
-
-        # Write turns to file
-        with transcript_path.open("w") as f:
-            for turn in turns:
-                f.write(json.dumps(turn.to_dict(), ensure_ascii=False) + "\n")
-
-        return transcript_path
-
-    def test_listen_recent_turns(self, transcript_file: Path):
-        """Test reading recent turns."""
-        tool = create_listen_tool(transcript_file)
-        result = tool.func(scope="recent", limit=2)
-
-        assert "[Turn 3]" in result
-        assert "[Turn 4]" in result
-        assert "presentation" in result
-        assert "[Turn 0]" not in result
-
-    def test_listen_all_turns(self, transcript_file: Path):
-        """Test reading all turns."""
-        tool = create_listen_tool(transcript_file)
-        result = tool.func(scope="all")
-
-        assert "[Turn 0]" in result
-        assert "[Turn 4]" in result
-        assert "Hello" in result
-        assert "stressful" in result
-
-    def test_listen_range_turns(self, transcript_file: Path):
-        """Test reading a range of turns."""
-        tool = create_listen_tool(transcript_file)
-        result = tool.func(scope="range", start_turn=1, end_turn=3)
-
-        assert "[Turn 1]" in result
-        assert "[Turn 2]" in result
-        assert "[Turn 0]" not in result
-        assert "[Turn 3]" not in result
-
-    def test_listen_search_keyword(self, transcript_file: Path):
-        """Test searching for a keyword."""
-        tool = create_listen_tool(transcript_file)
-        result = tool.func(scope="search", keyword="anxious")
-
-        assert "anxious" in result.lower()
-        assert "[Turn 1]" in result
-        assert "[Turn 2]" in result
-        assert "presentation" not in result
-
-    def test_listen_filter_by_speaker(self, transcript_file: Path):
-        """Test filtering by speaker."""
-        tool = create_listen_tool(transcript_file)
-        result = tool.func(scope="all", speaker="client")
-
-        assert "CLIENT:" in result
-        assert "THERAPIST:" not in result
-        assert "anxious" in result
-
-    def test_listen_empty_transcript(self, tmp_path: Path):
-        """Test reading from empty transcript."""
-        empty_transcript = tmp_path / "empty.jsonl"
-        empty_transcript.touch()
-
-        tool = create_listen_tool(empty_transcript)
-        result = tool.func(scope="all")
-
-        assert "No conversation history" in result
-
-    def test_listen_nonexistent_transcript(self, tmp_path: Path):
-        """Test reading from nonexistent transcript."""
-        nonexistent = tmp_path / "nonexistent.jsonl"
-
-        tool = create_listen_tool(nonexistent)
-        result = tool.func(scope="all")
-
-        assert "No conversation history" in result
-
-    def test_listen_tool_name(self, transcript_file: Path):
-        """Test that listen tool has correct name."""
-        tool = create_listen_tool(transcript_file)
-        assert tool.name == "listen"
-
-    def test_listen_tool_description(self, transcript_file: Path):
-        """Test that listen tool has description."""
-        tool = create_listen_tool(transcript_file)
-        assert "conversation history" in tool.description.lower()
-        assert "transcript" in tool.description.lower()
-
 
 class TestRecordTool:
     """Tests for record tool (therapist only)."""
@@ -442,18 +331,38 @@ class TestEmotionStateTool:
 
 
 class TestMemoryManageTool:
-    """Tests for memory_manage tool."""
+    """Tests for memory_manage tool (user-level, repository-backed)."""
+
+    _USER_ID = "test_user"
+
+    @pytest.fixture(autouse=True)
+    def _reset_repo(self):
+        """Reset global repository after each test."""
+        from empathy.storage.memory_repo import set_memory_repository
+
+        set_memory_repository(None)
+        yield
+        set_memory_repository(None)
 
     @pytest.fixture
-    def dialogue_dir(self, tmp_path: Path) -> Path:
-        """Create a temporary dialogue directory."""
-        dialogue_dir = tmp_path / "test_dialogue"
-        dialogue_dir.mkdir()
-        return dialogue_dir
+    def repo(self):
+        """Create a fresh in-memory repository."""
+        from empathy.storage.memory_repo import (
+            InMemoryMemoryRepository,
+            set_memory_repository,
+        )
 
-    def test_memory_store(self, dialogue_dir: Path):
+        r = InMemoryMemoryRepository()
+        set_memory_repository(r)
+        return r
+
+    @pytest.fixture
+    def tool(self, repo):
+        """Create memory_manage tool backed by the in-memory repo."""
+        return create_memory_manage_tool(self._USER_ID)
+
+    def test_memory_store(self, tool, repo):
         """Test storing a memory."""
-        tool = create_memory_manage_tool("therapist", dialogue_dir)
         result = tool.func(
             action="store",
             memory_type="pattern",
@@ -462,31 +371,17 @@ class TestMemoryManageTool:
         )
 
         assert "Memory stored:" in result
-        # Extract memory ID
         memory_id = result.split(": ")[1]
 
-        # Verify file was created
-        memory_path = dialogue_dir / ".empathy" / "therapist" / "memories" / "patterns" / f"{memory_id}.json"
-        assert memory_path.exists()
+        # Verify via repository
+        mem = repo.retrieve(self._USER_ID, memory_id)
+        assert mem is not None
+        assert mem.type == "pattern"
+        assert mem.content == "Client tends to catastrophize when discussing work"
+        assert mem.importance == 8
 
-        # Verify content
-        memory_data = json.loads(memory_path.read_text())
-        assert memory_data["id"] == memory_id
-        assert memory_data["type"] == "pattern"
-        assert memory_data["content"] == "Client tends to catastrophize when discussing work"
-        assert memory_data["importance"] == 8
-
-        # Verify index was updated
-        index_path = dialogue_dir / ".empathy" / "therapist" / "memories" / "index.json"
-        assert index_path.exists()
-        index_data = json.loads(index_path.read_text())
-        assert any(m["id"] == memory_id for m in index_data["memories"])
-
-    def test_memory_retrieve(self, dialogue_dir: Path):
+    def test_memory_retrieve(self, tool, repo):
         """Test retrieving a memory."""
-        tool = create_memory_manage_tool("client", dialogue_dir)
-
-        # Store a memory first
         store_result = tool.func(
             action="store",
             memory_type="key_event",
@@ -495,7 +390,6 @@ class TestMemoryManageTool:
         )
         memory_id = store_result.split(": ")[1]
 
-        # Retrieve the memory
         retrieve_result = tool.func(
             action="retrieve",
             memory_type="key_event",
@@ -506,11 +400,8 @@ class TestMemoryManageTool:
         assert "panic attack" in retrieve_result
         assert "team meeting" in retrieve_result
 
-    def test_memory_search(self, dialogue_dir: Path):
+    def test_memory_search(self, tool):
         """Test searching memories."""
-        tool = create_memory_manage_tool("therapist", dialogue_dir)
-
-        # Store multiple memories
         tool.func(
             action="store",
             memory_type="insight",
@@ -530,7 +421,6 @@ class TestMemoryManageTool:
             importance=5,
         )
 
-        # Search for "anxiety"
         search_result = tool.func(
             action="search",
             memory_type="insight",
@@ -541,11 +431,8 @@ class TestMemoryManageTool:
         assert "fear of judgment" in search_result
         assert "importance: 7" in search_result
 
-    def test_memory_update(self, dialogue_dir: Path):
+    def test_memory_update(self, tool):
         """Test updating a memory."""
-        tool = create_memory_manage_tool("therapist", dialogue_dir)
-
-        # Store a memory first
         store_result = tool.func(
             action="store",
             memory_type="relationship",
@@ -554,7 +441,6 @@ class TestMemoryManageTool:
         )
         memory_id = store_result.split(": ")[1]
 
-        # Update the memory
         update_result = tool.func(
             action="update",
             memory_type="relationship",
@@ -564,20 +450,16 @@ class TestMemoryManageTool:
 
         assert f"Memory updated: {memory_id}" in update_result
 
-        # Verify update
         retrieve_result = tool.func(
             action="retrieve",
             memory_type="relationship",
             memory_id=memory_id,
         )
         assert "improving relationship" in retrieve_result
-        assert "updated_at" in retrieve_result
+        assert "Updated:" in retrieve_result
 
-    def test_memory_delete(self, dialogue_dir: Path):
+    def test_memory_delete(self, tool, repo):
         """Test deleting a memory."""
-        tool = create_memory_manage_tool("client", dialogue_dir)
-
-        # Store a memory first
         store_result = tool.func(
             action="store",
             memory_type="key_event",
@@ -586,7 +468,6 @@ class TestMemoryManageTool:
         )
         memory_id = store_result.split(": ")[1]
 
-        # Delete the memory
         delete_result = tool.func(
             action="delete",
             memory_type="key_event",
@@ -594,37 +475,25 @@ class TestMemoryManageTool:
         )
 
         assert f"Memory deleted: {memory_id}" in delete_result
+        assert repo.retrieve(self._USER_ID, memory_id) is None
 
-        # Verify deletion
-        memory_path = dialogue_dir / ".empathy" / "client" / "memories" / "key_events" / f"{memory_id}.json"
-        assert not memory_path.exists()
-
-    def test_memory_store_missing_content(self, dialogue_dir: Path):
+    def test_memory_store_missing_content(self, tool):
         """Test storing memory without content."""
-        tool = create_memory_manage_tool("therapist", dialogue_dir)
         result = tool.func(action="store", memory_type="pattern")
-
         assert "Content is required" in result
 
-    def test_memory_retrieve_missing_id(self, dialogue_dir: Path):
+    def test_memory_retrieve_missing_id(self, tool):
         """Test retrieving memory without ID."""
-        tool = create_memory_manage_tool("therapist", dialogue_dir)
         result = tool.func(action="retrieve", memory_type="pattern")
-
         assert "Memory ID is required" in result
 
-    def test_memory_search_missing_query(self, dialogue_dir: Path):
+    def test_memory_search_missing_query(self, tool):
         """Test searching without query."""
-        tool = create_memory_manage_tool("therapist", dialogue_dir)
         result = tool.func(action="search", memory_type="pattern")
-
         assert "Query is required" in result
 
-    def test_memory_search_no_matches(self, dialogue_dir: Path):
+    def test_memory_search_no_matches(self, tool):
         """Test searching with no matches."""
-        tool = create_memory_manage_tool("therapist", dialogue_dir)
-
-        # Store a memory
         tool.func(
             action="store",
             memory_type="insight",
@@ -632,18 +501,18 @@ class TestMemoryManageTool:
             importance=5,
         )
 
-        # Search for non-matching term
         result = tool.func(action="search", memory_type="insight", query="nonexistent")
-
         assert "No matching memories" in result
 
-    def test_memory_tool_name(self, dialogue_dir: Path):
+    def test_memory_tool_name(self, tool):
         """Test that memory_manage tool has correct name."""
-        tool = create_memory_manage_tool("therapist", dialogue_dir)
         assert tool.name == "memory_manage"
 
-    def test_memory_tool_description(self, dialogue_dir: Path):
+    def test_memory_tool_description(self, tool):
         """Test that memory_manage tool has description."""
-        tool = create_memory_manage_tool("therapist", dialogue_dir)
         assert "memory" in tool.description.lower()
         assert "storage" in tool.description.lower()
+
+    def test_memory_manage_returns_none_without_user_id(self):
+        """Test that tool creation returns None when user_id is missing."""
+        assert create_memory_manage_tool(None) is None

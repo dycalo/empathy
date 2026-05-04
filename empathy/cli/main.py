@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import cast
 
 import typer
+import yaml
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -69,8 +70,10 @@ def start(
     from empathy.storage.registry import list_dialogues, update_dialogue
 
     dialogues = list_dialogues(project_dir)
+    user_id = client_id if side == "client" else therapist_id
+    filtered = _filter_dialogues_for_user(project_dir, dialogues, side, user_id)
     dialogue_dir = _pick_dialogue(
-        project_dir, dialogues, side, client_id=client_id, therapist_id=therapist_id
+        project_dir, filtered, side, client_id=client_id, therapist_id=therapist_id
     )
     dialogue_id = dialogue_dir.name
 
@@ -85,13 +88,14 @@ def start(
         update_dialogue(project_dir, dialogue_id, sides_connected=connected, status=new_status)
 
     # --- Load layered config + knowledge ---
-    from empathy.extensions.config import load_config
+    from empathy.extensions.config import load_config, resolve_user_id
     from empathy.extensions.psych import load_dialogue_background, load_side_knowledge
 
     config = load_config(cast(Speaker, side), dialogue_dir=dialogue_dir)
     knowledge = load_side_knowledge(cast(Speaker, side), dialogue_dir=dialogue_dir)
     background = load_dialogue_background()
     model: str = config.get("llm", {}).get("model", "claude-haiku-4-5-20251001")
+    user_id = resolve_user_id(side, dialogue_dir)
 
     # --- Load MCP tools ---
     from empathy.extensions.mcp import load_mcp_provider
@@ -118,6 +122,7 @@ def start(
         mcp_provider=mcp_provider if not mcp_provider.is_empty else None,
         dialogue_dir=dialogue_dir,
         transcript_path=dialogue_dir / "transcript.jsonl",
+        user_id=user_id,
     )
 
     # --- Load skills ---
@@ -161,7 +166,7 @@ def run(
         raise typer.Exit(1)
 
     from empathy.agents.langchain_agent import LangChainAgent
-    from empathy.extensions.config import load_config
+    from empathy.extensions.config import load_config, resolve_user_id
     from empathy.extensions.psych import load_dialogue_background, load_side_knowledge
     from empathy.modes.auto import run_auto
 
@@ -170,6 +175,9 @@ def run(
     config_c = load_config("client", dialogue_dir=dialogue_dir)
     resolved_model_c: str = config_c.get("llm", {}).get("model", model)
 
+    therapist_user_id = resolve_user_id("therapist", dialogue_dir)
+    client_user_id = resolve_user_id("client", dialogue_dir)
+
     therapist = LangChainAgent(
         side="therapist",
         model=resolved_model_t,
@@ -177,6 +185,7 @@ def run(
         dialogue_background=load_dialogue_background(),
         dialogue_dir=dialogue_dir,
         transcript_path=dialogue_dir / "transcript.jsonl",
+        user_id=therapist_user_id,
     )
     client = LangChainAgent(
         side="client",
@@ -185,6 +194,7 @@ def run(
         dialogue_background=load_dialogue_background(),
         dialogue_dir=dialogue_dir,
         transcript_path=dialogue_dir / "transcript.jsonl",
+        user_id=client_user_id,
     )
 
     console.print(
@@ -206,7 +216,9 @@ def run(
 @app.command()
 def export(
     dialogue: str = typer.Argument(..., help="Dialogue ID or path to dialogue directory"),
-    format: str = typer.Option("sft", "--format", "-f", help="Export format: sft, rlhf, or sft,rlhf"),
+    format: str = typer.Option(
+        "sft", "--format", "-f", help="Export format: sft, rlhf, or sft,rlhf"
+    ),
     output: Path = typer.Option(
         Path("training_data"), "--output", "-o", help="Output directory"
     ),
@@ -356,6 +368,37 @@ def delete(
 # ---------------------------------------------------------------------------
 
 
+def _filter_dialogues_for_user(
+    project_dir: Path,
+    dialogues: list[DialogueMeta],
+    side: str,
+    user_id: str | None,
+) -> list[DialogueMeta]:
+    """Return dialogues where *side* matches *user_id* or is unassigned."""
+    if not user_id:
+        return dialogues
+
+    matching: list[DialogueMeta] = []
+    for d in dialogues:
+        dialogue_dir = project_dir / d.path
+        dialogue_yaml = dialogue_dir / "dialogue.yaml"
+        if not dialogue_yaml.exists():
+            matching.append(d)
+            continue
+
+        try:
+            data = yaml.safe_load(dialogue_yaml.read_text()) or {}
+        except Exception:
+            matching.append(d)
+            continue
+
+        dialogue_user_id = data.get(f"{side}_id")
+        if dialogue_user_id is None or dialogue_user_id == user_id:
+            matching.append(d)
+
+    return matching
+
+
 def _pick_dialogue(
     project_dir: Path,
     dialogues: list[DialogueMeta],
@@ -376,8 +419,16 @@ def _pick_dialogue(
 
             click.edit(filename=str(side_md))
 
+    user_id = client_id if side == "client" else therapist_id
+
     if not dialogues:
-        console.print("[dim]No existing dialogues found. Creating new one…[/dim]")
+        if user_id:
+            console.print(
+                f"[dim]No dialogues found for user [cyan]{user_id}[/cyan]. "
+                "Creating new one…[/dim]"
+            )
+        else:
+            console.print("[dim]No existing dialogues found. Creating new one…[/dim]")
         meta, dialogue_dir = create_dialogue(
             project_dir, client_id=client_id, therapist_id=therapist_id
         )

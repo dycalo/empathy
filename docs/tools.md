@@ -30,50 +30,6 @@ speak(content="I understand you're feeling anxious about the presentation. Can y
 - Never call `speak` for clarification questions
 - Content should be natural dialogue, no stage directions
 
-## Query Tools
-
-### listen
-
-**Purpose:** Review conversation history
-
-**Availability:** Both sides
-
-**Parameters:**
-- `scope` (string, required) - Query type: `recent`, `all`, `range`, `search`
-- `limit` (integer, optional) - Number of turns to return (default: 5)
-- `start_turn` (integer, optional) - Start of range (for `scope=range`)
-- `end_turn` (integer, optional) - End of range (for `scope=range`)
-- `keyword` (string, optional) - Search term (for `scope=search`)
-- `speaker` (string, optional) - Filter by speaker: `therapist`, `client`, `both` (default: `both`)
-
-**Examples:**
-
-View recent conversation:
-```python
-listen(scope="recent", limit=3)
-```
-
-Search for keyword:
-```python
-listen(scope="search", keyword="anxiety", speaker="client")
-```
-
-View specific range:
-```python
-listen(scope="range", start_turn=5, end_turn=10)
-```
-
-View all history:
-```python
-listen(scope="all")
-```
-
-**Use Cases:**
-- Recall earlier discussion points
-- Search for specific topics
-- Review client's previous statements
-- Check therapeutic progress
-
 ## State Management Tools
 
 ### emotion_state (Client Only)
@@ -220,7 +176,7 @@ memory_manage(
 )
 ```
 
-**Storage:** `.empathy/<side>/memories/`
+**Storage:** Neo4j graph database (`(:User)-[:HAS_MEMORY]->(:Memory)`). Memories are scoped to the user (via `client_id` / `therapist_id` in `dialogue.yaml`) and persist across all dialogues.
 
 **Memory Types:**
 - `key_event` - Significant disclosures, breakthroughs, crises
@@ -233,16 +189,13 @@ memory_manage(
 ### Therapist Typical Flow
 
 ```
-1. listen(scope="recent", limit=3)
-   → Review recent conversation
-
-2. record(action="create", record_type="observation", content="...")
+1. record(action="create", record_type="observation", content="...")
    → Document clinical observation
 
-3. memory_manage(action="store", memory_type="pattern", content="...")
+2. memory_manage(action="store", memory_type="pattern", content="...")
    → Store identified pattern
 
-4. speak(content="...")
+3. speak(content="...")
    → Respond to client
 ```
 
@@ -252,13 +205,10 @@ memory_manage(
 1. emotion_state(action="update", primary_emotion="anxious", intensity=7, ...)
    → Update emotional state
 
-2. listen(scope="search", keyword="coping strategies")
-   → Recall previous discussion
-
-3. memory_manage(action="store", memory_type="insight", content="...")
+2. memory_manage(action="store", memory_type="insight", content="...")
    → Record personal insight
 
-4. speak(content="...")
+3. speak(content="...")
    → Respond to therapist
 ```
 
@@ -303,11 +253,6 @@ memory_manage(
 - Simple response doesn't require data lookup
 
 ### Tool Selection
-
-**listen:**
-- Use `scope=recent` for quick context refresh
-- Use `scope=search` for specific topics
-- Avoid `scope=all` unless necessary (performance)
 
 **record vs memory_manage:**
 - `record` - Formal clinical documentation

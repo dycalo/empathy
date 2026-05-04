@@ -87,8 +87,8 @@ Controller Instruction
   ↓
 Context Assembly (ContextBuilder)
   ├─ System Prompt (role, knowledge, skills, state)
-  ├─ Messages (summary + windowed transcript)
-  └─ Tools (speak, listen, record, emotion_state, memory_manage)
+  ├─ Messages (full transcript)
+  └─ Tools (speak, record, emotion_state, memory_manage)
   ↓
 LangChain Agent Generation
   ├─ ReAct reasoning loop
@@ -115,18 +115,16 @@ dialogues/<session>/
     │   ├── emotion-states/       # Automatic emotion tracking
     │   │   ├── current.json
     │   │   └── history.jsonl
-    │   └── memories/             # Long-term memory (LangChain)
     └── therapist/
         ├── summary.json
         ├── observations/         # Automatic clinical observations
         │   ├── current.json
         │   └── history.jsonl
-        ├── records/              # Manual clinical records (LangChain)
-        │   ├── assessments/
-        │   ├── progress_notes/
-        │   ├── treatment_plans/
-        │   └── observations/
-        └── memories/
+        └── records/              # Manual clinical records (LangChain)
+            ├── assessments/
+            ├── progress_notes/
+            ├── treatment_plans/
+            └── observations/
 ```
 
 ## Tool System
@@ -134,13 +132,10 @@ dialogues/<session>/
 ### Terminal Tools
 - **speak** - Submit dialogue turn (triggers human confirmation)
 
-### Query Tools
-- **listen** - Read conversation history (recent/all/range/search)
-
 ### State Management Tools
 - **emotion_state** (client) - Track emotional state
 - **record** (therapist) - Maintain clinical records
-- **memory_manage** (both) - Store long-term memories
+- **memory_manage** (both) - User-level long-term memory storage backed by Neo4j. Memories persist across all dialogues for the same user (identified by `client_id` / `therapist_id`).
 
 ### MCP Tools
 External tools via Model Context Protocol:

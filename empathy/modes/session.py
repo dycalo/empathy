@@ -6,20 +6,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from empathy.agents.context import ConversationWindow
 from empathy.core.models import ClarificationMessage, Draft, Speaker, Turn, TurnSource
 from empathy.extensions.skills import Skill
 from empathy.storage.drafts import append_draft, read_drafts, update_draft_outcome
 from empathy.storage.state import acquire_floor as _acquire
 from empathy.storage.state import read_state
 from empathy.storage.state import release_floor as _release
-from empathy.storage.summary import read_summary, write_summary
 from empathy.storage.transcript import append_turn, read_turns
 
 if TYPE_CHECKING:
     from empathy.agents.langchain_agent import LangChainAgent
 
-_window = ConversationWindow()  # shared default window (buffer_turns=6)
+
+
 
 
 @dataclass
@@ -100,17 +99,6 @@ class DialogueSession:
         """
         transcript = self.get_transcript()
         draft_history = self.get_draft_history()
-
-        # Context window management
-        existing_summary, covers_turn_count = read_summary(self.summary_path)
-        window_result = _window.select(transcript, existing_summary, covers_turn_count)
-
-        if window_result.needs_new_summary:
-            new_summary = self.agent.summarize(window_result.turns_to_summarize, existing_summary)
-            write_summary(self.summary_path, new_summary, len(window_result.turns_to_summarize))
-            summary = new_summary
-        else:
-            summary = window_result.summary
 
         # Automatic emotion state transition (client only)
         emotion_state = None
@@ -221,26 +209,15 @@ class DialogueSession:
 
         result = self.agent.generate_draft(
             instruction,
-            window_result.turns,
+            transcript,
             draft_history,
             active_skills=active_skills,
-            summary=summary,
+            summary="",
             emotion_state=emotion_state,
             clinical_observation=clinical_observation,
         )
         if result.type == "clarification":
             return ClarificationMessage(content=result.content)
-
-        # Calculate conversation window range
-        conversation_window = None
-        if window_result.turns:
-            # Find turn numbers in the windowed transcript
-            turn_numbers = [i for i, t in enumerate(transcript) if t in window_result.turns]
-            if turn_numbers:
-                conversation_window = {
-                    "start_turn": turn_numbers[0],
-                    "end_turn": turn_numbers[-1],
-                }
 
         # Extract API usage
         api_usage = None
@@ -267,7 +244,7 @@ class DialogueSession:
             self.side,
             result.content,
             instruction,
-            conversation_window=conversation_window,
+            conversation_window=None,
             api_usage=api_usage,
             model=self.agent.model,
             hook_annotations=hook_annotations,

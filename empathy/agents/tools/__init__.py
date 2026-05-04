@@ -1,7 +1,7 @@
 """Tool registry for Empathy agents.
 
 This module provides a unified interface for all tools available to agents,
-including system tools (speak, listen, record, emotion_state, memory_manage),
+including system tools (speak, record, emotion_state, memory_manage),
 skills, and MCP tools.
 
 The ToolRegistry class provides centralized tool management with support for:
@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "create_speak_tool",
-    "create_listen_tool",
     "create_record_tool",
     "create_emotion_state_tool",
     "create_memory_manage_tool",
@@ -62,13 +61,6 @@ def create_speak_tool() -> BaseTool:
     return _create()
 
 
-def create_listen_tool(transcript_path: Path) -> BaseTool:
-    """Create the listen tool (read conversation history)."""
-    from empathy.agents.tools.listen import create_listen_tool as _create
-
-    return _create(transcript_path)
-
-
 def create_record_tool(side: Speaker, dialogue_dir: Path) -> BaseTool | None:
     """Create the record tool (therapist only - clinical records)."""
     if side != "therapist":
@@ -87,15 +79,16 @@ def create_emotion_state_tool(side: Speaker, dialogue_dir: Path) -> BaseTool | N
     return _create(dialogue_dir)
 
 
-def create_memory_manage_tool(side: Speaker, dialogue_dir: Path) -> BaseTool:
-    """Create the memory_manage tool (long-term memory management)."""
+def create_memory_manage_tool(user_id: str | None) -> BaseTool | None:
+    """Create the memory_manage tool (user-level long-term memory)."""
     from empathy.agents.tools.memory_manage import create_memory_manage_tool as _create
 
-    return _create(side, dialogue_dir)
+    return _create(user_id)
 
 
 def create_all_tools(
     side: Speaker,
+    user_id: str | None,
     dialogue_dir: Path,
     transcript_path: Path,
     mcp_provider: McpProvider | None = None,
@@ -104,6 +97,7 @@ def create_all_tools(
 
     Args:
         side: Speaker side ("therapist" or "client")
+        user_id: User identifier for user-level tools (e.g. memory)
         dialogue_dir: Path to dialogue directory
         transcript_path: Path to transcript.jsonl
         mcp_provider: Optional MCP provider for external tools
@@ -114,7 +108,7 @@ def create_all_tools(
     from empathy.agents.tools.registry import create_tool_registry
 
     # Use the registry to create and manage tools
-    registry = create_tool_registry(side, dialogue_dir, transcript_path, mcp_provider)
+    registry = create_tool_registry(side, user_id, dialogue_dir, transcript_path, mcp_provider)
 
     # Return all enabled tools for this side
     return registry.list_tools(side=side, enabled_only=True)

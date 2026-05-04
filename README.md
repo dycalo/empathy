@@ -41,7 +41,7 @@ Once both sides connect, you can begin the dialogue. Type instructions in the co
 - **[Usage Guide](docs/usage.md)**: TUI interface, commands, and workflows
 - **[Architecture](docs/architecture.md)**: System design and components
 - **[Configuration](docs/configuration.md)**: Three-tier config system
-- **[Tools Reference](docs/tools.md)**: System tools API (speak, listen, record, emotion_state, memory_manage)
+- **[Tools Reference](docs/tools.md)**: System tools API (speak, record, emotion_state, memory_manage)
 - **[Training Data](docs/training.md)**: Export formats for SFT and RLHF
 
 ## 🏗️ Architecture Overview
@@ -66,10 +66,9 @@ Once both sides connect, you can begin the dialogue. Type instructions in the co
 │                    System Tools                              │
 ├─────────────────────────────────────────────────────────────┤
 │  speak           → Submit dialogue turn                      │
-│  listen          → Query conversation history                │
 │  record          → Clinical records (therapist)              │
 │  emotion_state   → Emotion tracking (client)                 │
-│  memory_manage   → Long-term memory storage                  │
+│  memory_manage   → User-level long-term memory (Neo4j)       │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -110,7 +109,7 @@ empathy/
 
 # Core logic locations:
 # - empathy/agents/           LangChain agent and tool registry
-# - empathy/agents/tools/     System tools (speak, listen, record, etc.)
+# - empathy/agents/tools/     System tools (speak, record, etc.)
 # - empathy/modes/            Session management
 # - empathy/extensions/       Skills, config, MCP
 # - empathy/cli/              TUI interface

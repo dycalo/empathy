@@ -15,8 +15,7 @@ Layer layout::
         Block 5: MCP instructions  (Phase 3)
 
     messages
-        conversation summary as first user message  (when present)
-        windowed transcript turns
+        full transcript turns
         feedback + controller instruction
 
     tools
@@ -65,64 +64,6 @@ class ContextResult:
     system: list[dict[str, Any]]
     messages: list[dict[str, Any]]
     tools: list[dict[str, Any]]
-
-
-@dataclass
-class WindowResult:
-    """Output of ``ConversationWindow.select()``: which turns to include."""
-
-    turns: list[Turn]  # turns to pass verbatim in the messages list
-    summary: str  # existing summary text (empty if none)
-    needs_new_summary: bool  # True → caller should generate an updated summary
-    turns_to_summarize: list[Turn]  # turns that should be condensed
-
-
-@dataclass
-class ConversationWindow:
-    """Partitions a transcript into a verbatim buffer and an overflow to summarise.
-
-    Keeps the last ``buffer_turns`` turns verbatim; anything older is
-    represented by a LLM-generated summary that the caller manages.
-    """
-
-    buffer_turns: int = 6  # number of most-recent turns to pass verbatim (~3 exchanges)
-
-    def select(
-        self,
-        transcript: list[Turn],
-        existing_summary: str = "",
-        covers_turn_count: int = 0,
-    ) -> WindowResult:
-        """Decide which turns to include and whether a new summary is needed.
-
-        Args:
-            transcript: Full ordered list of committed turns.
-            existing_summary: Previously generated summary text (empty if none).
-            covers_turn_count: How many overflow turns the existing summary covers.
-        """
-        total = len(transcript)
-
-        if total <= self.buffer_turns:
-            # Everything fits in the buffer — no summary needed.
-            return WindowResult(
-                turns=transcript,
-                summary=existing_summary,
-                needs_new_summary=False,
-                turns_to_summarize=[],
-            )
-
-        buffer = transcript[-self.buffer_turns :]
-        overflow = transcript[: -self.buffer_turns]
-
-        # Regenerate the summary when overflow has grown since the last snapshot.
-        needs_new_summary = len(overflow) > covers_turn_count
-
-        return WindowResult(
-            turns=buffer,
-            summary=existing_summary,
-            needs_new_summary=needs_new_summary,
-            turns_to_summarize=overflow,
-        )
 
 
 @dataclass
@@ -183,7 +124,7 @@ class ContextBuilder:
 
         return ContextResult(
             system=self.build_system(emotion_state=emotion_state, clinical_observation=clinical_observation),
-            messages=self.build_messages(transcript, draft_history, instruction, summary=summary),
+            messages=self.build_messages(transcript, draft_history, instruction),
             tools=tools,
         )
 
@@ -322,13 +263,9 @@ Use this observation to guide your therapeutic approach:
         turns: list[Turn],
         draft_history: list[Draft],
         instruction: str,
-        *,
-        summary: str = "",
     ) -> list[dict[str, Any]]:
         """Build the Anthropic messages list.
 
-        - If ``summary`` is set it is injected as the first user message so the
-          agent has context for turns that scrolled out of the active window.
         - Transcript turns → ``user``/``assistant`` based on speaker vs. side.
         - Consecutive same-role turns are merged (Anthropic requires alternating).
         - Feedback on recent rejected/edited drafts is prepended to the final
@@ -336,14 +273,6 @@ Use this observation to guide your therapeutic approach:
         - Ensures the first message is always a ``user`` message.
         """
         messages: list[dict[str, Any]] = []
-
-        if summary:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": f"## Conversation so far\n\n{summary}",
-                }
-            )
 
         for turn in turns:
             role = "assistant" if turn.speaker == self.side else "user"
